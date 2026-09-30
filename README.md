@@ -3,7 +3,7 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![tests](https://img.shields.io/badge/testes-115-brightgreen)
+![tests](https://img.shields.io/badge/testes-120-brightgreen)
 
 Núcleo de um sistema de **reserva de ingressos** para eventos com capacidade limitada, em
 modelo **flash sale** (janelas de venda com pico de concorrência): criar evento, consultar
@@ -12,7 +12,7 @@ disponibilidade, reservar ingressos com idempotência, consultar e cancelar rese
 A exigência central é **nunca vender mais ingressos que a capacidade** — com N instâncias da
 API rodando ao mesmo tempo, sem lock de linha e sem fila.
 
-- **5 endpoints** (seção [Endpoints](#endpoints)) · **115 testes** · **smoke test 26/26**
+- **5 endpoints** (seção [Endpoints](#endpoints)) · **120 testes** · **smoke test 26/26**
 - API **stateless** com 2 réplicas atrás de um load balancer nginx
 - Worker de expiração + coleta *on-demand*, ambos idempotentes
 
@@ -30,6 +30,7 @@ API rodando ao mesmo tempo, sem lock de linha e sem fila.
 - [Garantia anti-oversell](#garantia-anti-oversell)
 - [Decisões arquiteturais e trade-offs](#decisões-arquiteturais-e-trade-offs)
 - [Configuração](#configuração)
+- [Logs](#logs)
 - [Estrutura do repositório](#estrutura-do-repositório)
 - [Evoluções futuras](#evoluções-futuras)
 - [Documentação](#documentação)
@@ -107,7 +108,7 @@ docker compose down -v            # para e apaga os dados
 
 ```bash
 docker compose up -d postgres     # os testes usam o banco flash_booking_test
-./gradlew test                    # 115 testes
+./gradlew test                    # 120 testes
 ```
 
 Relatório: `build/reports/tests/test/index.html`.
@@ -312,6 +313,32 @@ na API em vez de processo separado (simpler, e a liberação é idempotente).
 | `DB_URL` / `DB_USER` / `DB_PASSWORD` | `localhost:5432/flash_booking` / `flash` / `flash` | banco |
 | `PORT` | `8080` | porta da API |
 
+## Logs
+
+Uma linha de acesso no **fim de cada requisição** (método, caminho com os IDs, status e
+duração) e os eventos de negócio com os IDs envolvidos:
+
+```
+INFO  request method=POST path=/events/45/reservations status=201 durationMs=227
+INFO  event created eventId=45 capacity=10 name=Log Demo
+INFO  reservation created reservationId=48 eventId=45 quantity=3 expiresAt=2026-09-30T14:23:59Z
+WARN  api error status=404 code=NOT_FOUND path=/events/999999 details={eventId=999999}
+INFO  reservation cancelled reservationId=48 eventId=45 quantity=3
+INFO  reservation expired reservationId=49 eventId=46 quantity=4 source=worker
+```
+
+| Regra | Por quê |
+|-------|---------|
+| Erros 4xx em `WARN`, 5xx em `ERROR` com stack trace | `ERROR` em 4xx mascararia incidentes reais |
+| IDs registrados **depois** da transação confirmar | não registrar estado que pode ser revertido |
+| `/actuator/health` fora do log de acesso | o healthcheck do Compose consulta a cada 5 s em cada réplica |
+| formato `chave=valor` | grep simples e filtrável por qualquer coletor |
+
+```bash
+docker compose logs -f api                # ao vivo
+docker compose logs api | grep "reservationId=48"   # rastrear um objeto
+```
+
 ## Estrutura do repositório
 
 ```
@@ -321,14 +348,17 @@ na API em vez de processo separado (simpler, e a liberação é idempotente).
 │   └── smoke.sh                 # smoke test (26 verificações)
 ├── docs/
 │   ├── PLANEJAMENTO.md          # requisitos, arquitetura e decisões originais
-│   ├── PROGRESSO.md             # status, matriz de testes, 19 decisões, pendências
+│   ├── PROGRESSO.md             # status, matriz de testes, 20 decisões, pendências
 │   ├── CODE_REVIEW.md           # pontos que valem code review
+│   ├── APRESENTACAO.md          # roteiro da demonstração (comandos + saídas reais)
+│   ├── MANUAL.md                # como subir, testar e chamar cada endpoint
 │   └── SMOKE_TEST.md            # evidências da execução real
 ├── src/main/kotlin/com/cielo/flashbooking/
 │   ├── event/                   # Event, EventService, EventController, repositório
 │   ├── reservation/             # Reservation, ReservationService, ReservationWriter,
 │   │                            # ReservationExpiryService (worker), controller
 │   ├── error/                   # ApiException + exceções de domínio + handler
+│   ├── http/                    # log de acesso por requisição (interceptor)
 │   └── FlashBookingApplication.kt
 ├── src/main/resources/db/migration/   # Flyway V1–V3
 ├── docker-compose.yml           # postgres + api x2 + lb
@@ -353,5 +383,7 @@ na API em vez de processo separado (simpler, e a liberação é idempotente).
 | [`docs/PLANEJAMENTO.md`](docs/PLANEJAMENTO.md) | requisitos, arquitetura, modelo de dados e decisões originais |
 | [`docs/PROGRESSO.md`](docs/PROGRESSO.md) | status da implementação, testes, 19 decisões e pendências |
 | [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) | pontos que valem code review, alternativas rejeitadas e pegadinhas |
+| [`docs/APRESENTACAO.md`](docs/APRESENTACAO.md) | roteiro da demonstração: linha do tempo, comandos com saída real e perguntas prováveis |
+| [`docs/MANUAL.md`](docs/MANUAL.md) | passo a passo manual: Docker, um teste por vez e `curl` de cada endpoint |
 | [`docs/SMOKE_TEST.md`](docs/SMOKE_TEST.md) | evidências da pilha real (26/26, réplicas, worker) |
 | [`CHANGELOG.md`](CHANGELOG.md) | histórico das mudanças |

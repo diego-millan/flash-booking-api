@@ -107,6 +107,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every 5s on each replica) never floods the log. New `RequestLoggingInterceptor` +
   `WebConfig` in the `http` package, covered by `RequestLoggingIntegrationTest` (5 tests,
   120 in total); the expiry sweep unit test now stubs the writer return value.
+- `docs/MANUAL.md`: manual to run the project unaided — the 7 steps to bring the whole stack
+  up with Docker (jar, `compose up`, health, smoke test, logs, shutdown), how to run a whole
+  test class or a single test method (exact name or wildcard, with the 15 classes and their
+  120 tests), and a `curl` example for every endpoint with real responses, every error
+  variation and a summary table of all 21 cases.
+- `docs/APRESENTACAO.md`: presentation script — 12-minute timeline, narration for each block,
+  the live demos with their real output (flow + idempotency, 20 requests vs 5 seats through
+  the load balancer, database proofs, the expiry trick), the likely code-review questions with
+  answers and proofs, the log walkthrough and a plan B for demo failures.
 
 ### Changed
 
