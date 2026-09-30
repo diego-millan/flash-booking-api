@@ -1,5 +1,6 @@
 package com.cielo.flashbooking.event
 
+import com.cielo.flashbooking.error.InvalidQuantityException
 import com.cielo.flashbooking.event.dto.CreateEventRequest
 import com.cielo.flashbooking.event.dto.EventResponse
 import org.springframework.stereotype.Service
@@ -8,6 +9,9 @@ import org.springframework.stereotype.Service
 class EventService(private val eventRepository: EventRepository) {
 
     fun create(request: CreateEventRequest): EventResponse {
+        if (request.capacity <= 0) {
+            throw InvalidQuantityException("capacity", request.capacity)
+        }
         val event = Event(name = request.name.trim(), capacity = request.capacity)
         return eventRepository.save(event).toResponse()
     }
@@ -19,4 +23,6 @@ internal fun Event.toResponse() = EventResponse(
     capacity = capacity,
     reserved = reserved,
     available = capacity - reserved,
+    status = status,
+    createdAt = createdAt,
 )

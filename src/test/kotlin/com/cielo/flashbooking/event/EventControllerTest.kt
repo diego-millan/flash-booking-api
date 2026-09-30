@@ -1,5 +1,6 @@
 package com.cielo.flashbooking.event
 
+import com.cielo.flashbooking.error.InvalidQuantityException
 import com.cielo.flashbooking.event.dto.EventResponse
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -10,6 +11,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import java.time.Instant
 
 @WebMvcTest(EventController::class)
 class EventControllerTest {
@@ -20,9 +22,13 @@ class EventControllerTest {
     @MockitoBean
     private lateinit var eventService: EventService
 
+    private val createdAt = Instant.parse("2026-09-29T20:00:00Z")
+
     @Test
     fun `should return 201 with created event when request is valid`() {
-        whenever(eventService.create(any())).thenReturn(EventResponse(1L, "Rock Show", 100, 0, 100))
+        whenever(eventService.create(any())).thenReturn(
+            EventResponse(1L, "Rock Show", 100, 0, 100, EventStatus.ACTIVE, createdAt),
+        )
 
         mockMvc.post("/events") {
             contentType = MediaType.APPLICATION_JSON
@@ -34,6 +40,8 @@ class EventControllerTest {
             jsonPath("$.capacity") { value(100) }
             jsonPath("$.reserved") { value(0) }
             jsonPath("$.available") { value(100) }
+            jsonPath("$.status") { value("ACTIVE") }
+            jsonPath("$.createdAt") { value("2026-09-29T20:00:00Z") }
         }
     }
 
@@ -50,14 +58,30 @@ class EventControllerTest {
     }
 
     @Test
-    fun `should return 400 VALIDATION_ERROR when capacity is less than 1`() {
+    fun `should return 422 INVALID_QUANTITY when capacity is zero`() {
+        whenever(eventService.create(any())).thenThrow(InvalidQuantityException("capacity", 0))
+
         mockMvc.post("/events") {
             contentType = MediaType.APPLICATION_JSON
             content = """{"name":"Rock Show","capacity":0}"""
         }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.error.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.error.details.capacity") { exists() }
+            status { isUnprocessableEntity() }
+            jsonPath("$.error.code") { value("INVALID_QUANTITY") }
+            jsonPath("$.error.details.capacity") { value(0) }
+        }
+    }
+
+    @Test
+    fun `should return 422 INVALID_QUANTITY when capacity is negative`() {
+        whenever(eventService.create(any())).thenThrow(InvalidQuantityException("capacity", -10))
+
+        mockMvc.post("/events") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name":"Rock Show","capacity":-10}"""
+        }.andExpect {
+            status { isUnprocessableEntity() }
+            jsonPath("$.error.code") { value("INVALID_QUANTITY") }
+            jsonPath("$.error.details.capacity") { value(-10) }
         }
     }
 
@@ -80,6 +104,17 @@ class EventControllerTest {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.error.code") { value("VALIDATION_ERROR") }
+        }
+    }
+
+    @Test
+    fun `should return 415 UNSUPPORTED_MEDIA_TYPE when content type is not json`() {
+        mockMvc.post("/events") {
+            contentType = MediaType.TEXT_PLAIN
+            content = "name=Rock Show"
+        }.andExpect {
+            status { isUnsupportedMediaType() }
+            jsonPath("$.error.code") { value("UNSUPPORTED_MEDIA_TYPE") }
         }
     }
 }

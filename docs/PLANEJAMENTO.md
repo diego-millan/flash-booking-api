@@ -153,13 +153,20 @@ A devolução de capacity deve ser uma única transação atômica
 }
 ```
 
-| Código HTTP | `code`                    | Quando                              |
-|-------------|---------------------------|-------------------------------------|
-| 400         | `VALIDATION_ERROR`        | Payload inválido                    |
-| 404         | `NOT_FOUND`               | Evento/reserva inexistente          |
-| 409         | `CAPACITY_EXCEEDED`       | Tentativa de oversell               |
-| 409         | `RESERVATION_EXPIRED`     | Reserva expirada (ex.: cancelamento)|
-| 422        | `INVALID_QUANTITY`        | Quantidade ≤ 0 ou acima do limite   |
+| Código HTTP | `code`                    | Quando                                             |
+|-------------|---------------------------|----------------------------------------------------|
+| 400         | `VALIDATION_ERROR`        | Payload inválido (bean validation, JSON malformado, campo obrigatório ausente, tipo de parâmetro inválido) |
+| 404         | `NOT_FOUND`               | Evento/reserva inexistente ou rota desconhecida    |
+| 405         | `METHOD_NOT_ALLOWED`      | Método HTTP não suportado pela rota                |
+| 409         | `CAPACITY_EXCEEDED`       | Tentativa de oversell                              |
+| 409         | `RESERVATION_EXPIRED`     | Reserva expirada (ex.: cancelamento)               |
+| 415         | `UNSUPPORTED_MEDIA_TYPE`  | `Content-Type` diferente de `application/json`     |
+| 422        | `INVALID_QUANTITY`        | Quantidade ≤ 0 ou acima do limite                  |
+| 500        | `INTERNAL_ERROR`          | Erro inesperado (com log no servidor)              |
+
+O JSON de entrada é desserializado de forma estrita (`fail-on-missing-creator-properties`):
+campo obrigatório ausente resulta em `400 VALIDATION_ERROR` em vez de valor default silencioso
+(ex.: `capacity` ausente virando `0`).
 
 ---
 

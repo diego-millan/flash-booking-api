@@ -38,6 +38,28 @@ class EventRepositoryTest {
     }
 
     @Test
+    fun `should default to active status when create without status`() {
+        val saved = eventRepository.save(Event(name = "Jazz Night", capacity = 30))
+        entityManager.flush()
+        entityManager.clear()
+
+        val found = eventRepository.findById(saved.id!!).orElseThrow()
+
+        assertEquals(EventStatus.ACTIVE, found.status)
+    }
+
+    @Test
+    fun `should persist paused status when save with paused status`() {
+        val saved = eventRepository.save(Event(name = "Jazz Night", capacity = 30, status = EventStatus.PAUSED))
+        entityManager.flush()
+        entityManager.clear()
+
+        val found = eventRepository.findById(saved.id!!).orElseThrow()
+
+        assertEquals(EventStatus.PAUSED, found.status)
+    }
+
+    @Test
     fun `should return empty when find by unknown id`() {
         val found = eventRepository.findById(999999L)
 

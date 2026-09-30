@@ -1,0 +1,5 @@
+ALTER TABLE events
+    ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE';
+
+ALTER TABLE events
+    ADD CONSTRAINT chk_events_status CHECK (status IN ('ACTIVE', 'PAUSED'));

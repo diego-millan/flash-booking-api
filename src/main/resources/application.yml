@@ -11,6 +11,8 @@ spring:
     open-in-view: false
   jackson:
     default-property-inclusion: non_null
+    deserialization:
+      fail-on-missing-creator-properties: true
 
 server:
   port: ${PORT:8080}
