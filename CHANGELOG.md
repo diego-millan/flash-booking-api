@@ -31,6 +31,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GET /events/:id` endpoint returning availability (`available = capacity - reserved`),
   `404 NOT_FOUND` for unknown events and `400 VALIDATION_ERROR` for non-numeric ids.
 - `NotFoundException` mapped to the standard error envelope.
+- `POST /events/:id/reservations` endpoint: atomic conditional `UPDATE` that increments
+  `events.reserved` only when it fits the capacity, never overselling; `Idempotency-Key`
+  header is required and a repeated key returns `200` with the previous reservation.
+- Flyway migration `V3__create_reservations.sql` with `reservations` table, `CHECK
+  (quantity > 0)`, `UNIQUE (idempotency_key)`, `FK → events(id)` and indexes for event
+  lookups plus a partial index on pending expirations.
+- `Reservation`, `ReservationStatus` (`PENDING | CONFIRMED | CANCELLED | EXPIRED`),
+  `ReservationRepository`, `ReservationWriter` (transactional unit) and `ReservationService`
+  (validation, idempotency and replay).
+- New error codes: `409 CAPACITY_EXCEEDED`, `409 IDEMPOTENCY_CONFLICT`, `422
+  INVALID_QUANTITY` above the configurable per-reservation limit
+  (`flash-booking.reservation.max-quantity`, default 10) and `400 VALIDATION_ERROR` for a
+  missing `Idempotency-Key` header.
+- Reservation TTL (`flash-booking.reservation.ttl-minutes`, default 10) stored in `expires_at`.
+- 38 new tests (70 in total) covering the reservation flow, including an end-to-end test
+  that sells out an event and asserts `reserved == capacity` (never greater).
 - `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
   requirements, test matrix, decisions and next steps.
 - Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending

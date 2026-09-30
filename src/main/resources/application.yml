@@ -17,6 +17,11 @@ spring:
 server:
   port: ${PORT:8080}
 
+flash-booking:
+  reservation:
+    max-quantity: 10
+    ttl-minutes: 10
+
 management:
   endpoints:
     web:
