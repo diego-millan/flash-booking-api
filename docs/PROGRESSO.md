@@ -8,7 +8,8 @@
 **Última atualização:** 30/09/2026
 **Estado:** entrega completa — 5 endpoints + expiração + concorrência + smoke test (26/26) + README · 115 testes
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** revisão final do `CHANGELOG.md` e do histórico (item restante da §7.5)
+**Próxima etapa:** nenhuma pendente — entrega completa (5 endpoints, expiração, concorrência,
+smoke test 26/26, README e revisão final do histórico)
 
 ---
 
@@ -177,6 +178,13 @@ próprio PostgreSQL a impor.
 | `e894978` | test | teste de concorrência real com 20 requisições simultâneas |
 | `b5bc7e9` | fix | 2 réplicas atrás do LB nginx + jar único para o `Dockerfile` |
 | `882d698` | test | `docker/smoke.sh` (26 verificações) |
+| `27886ee` | docs | evidências do smoke test (`docs/SMOKE_TEST.md`) |
+| `fc24bfc` | docs | `README.md` com rotas, garantias e decisões |
+| _último_ | docs | revisão final do `CHANGELOG.md` e desta tabela |
+
+> `1f77c7d` e `ad30e41` antecedem a criação do `CHANGELOG.md` (no `9c95d72`) e por isso não
+> o alteram; a partir do `9c95d72`, **todos** os commits atualizam o `CHANGELOG.md`
+> (convenção do `AGENTS.md`) — verificado com `git show --name-only` em toda a árvore.
 
 ---
 
@@ -250,7 +258,10 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
       when sweep runs twice` roda o worker 2× e confere `reserved == 0`, nunca negativo)
 - [x] ✅ Cancelamento devolve capacity (`releaseReserved` provado no banco e e2e: cancel 1×
       e cancel 2× devolvem `reserved` ao original, nunca mais que isso)
-- [ ] 🟡 Integração de cada endpoint + envelope de erro (5 de 5 endpoints com teste e2e)
+- [x] ✅ Integração de cada endpoint + envelope de erro (5 de 5 endpoints com teste e2e:
+      `POST /events` cria→consulta, `GET /events/:id` (200/404/400), `POST /reservations`
+      (201/200 replay/400 header/404/409/422/UNIQUE), `GET /reservations/:id` (200/404) e
+      `DELETE /reservations/:id` (200 devolvendo capacity 1× e 2×, 404, 409 expirada))
 - [x] ✅ Constraint `CHECK (reserved <= capacity)` provada no Postgres (feito)
 - [x] ✅ Endpoint `POST /reservations` esgota sem oversell no Postgres (feito)
 
@@ -281,7 +292,11 @@ O `README.md` existe e cobre tudo que a restrição 3 do planejamento exige:
 - [x] ✅ `Dockerfile` — `tasks.jar { enabled = false }` deixa **um** jar em `build/libs`
       (antes o `COPY *.jar` falhava com 2); o jar é pré-requisito documentado no README
       (multi-stage rejeitado: exigiria baixar Gradle e dependências dentro do build)
-- [ ] ⬜ Publicar o repositório com histórico limpo e revisar `CHANGELOG.md` antes da entrega
+- [x] ✅ Revisão final do `CHANGELOG.md` e do histórico antes da entrega — grupos
+      `Added`/`Changed`/`Fixed`/`Removed` na ordem exigida, 8 entradas repetitivas de progresso
+      consolidadas em uma, contagens de testes conferidas (12 → 24 → 70 → 97 → 113 → 115),
+      anotação sobre os 2 commits anteriores ao arquivo, `git log` revisado (25 commits,
+      Conventional Commits) e `master` publicado em `github.com/diego-millan/flash-booking-api`
 
 ---
 
@@ -309,11 +324,14 @@ docker compose down               # para tudo (o volume do Postgres permanece)
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** os 5 endpoints (§7.1), a expiração (§7.2), o teste de concorrência
-(§7.3) e o smoke test (§7.5) estão **concluídos**. Faltam: (1) `README.md` (§7.4 — o
-conteúdo mínimo está listado lá e os exemplos de `curl` já existem em
-[`SMOKE_TEST.md`](./SMOKE_TEST.md)), (2) revisão final do `CHANGELOG.md` e (3) o item
-"publicar com histórico limpo" da §7.5.
+**Entrega:** **concluída.** Todos os itens das seções 7.1 a 7.5 estão `[x]` — 5 endpoints,
+expiração (worker + coleta *on-demand*), teste de concorrência, smoke test 26/26 com 2 réplicas,
+`README.md` (§7.4) e a revisão final do `CHANGELOG.md`/histórico.
+
+Para a apresentação, o caminho curto é: `docker compose up --build -d` → `./docker/smoke.sh`
+→ `docker compose logs -f lb` (mostra as 2 réplicas atendendo) e os documentos
+[`PLANEJAMENTO.md`](./PLANEJAMENTO.md) (decisões), [`CODE_REVIEW.md`](./CODE_REVIEW.md)
+(pontos de discussão) e [`SMOKE_TEST.md`](./SMOKE_TEST.md) (evidências).
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).

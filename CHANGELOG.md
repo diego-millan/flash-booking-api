@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **History note:** the two initial commits (`1f77c7d` scaffold, `ad30e41` planning document)
+> predate this file, created in `9c95d72`, so they could not update it; their content is
+> covered by the first entries under `Added`. From `9c95d72` onwards, **every** commit updates
+> `CHANGELOG.md` (convention in the "Commits and Changelog" section of `AGENTS.md`).
+
 ## [Unreleased]
 
 ### Added
@@ -70,30 +75,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `reserved == 5` and never more; with quantity 2 the same 20 requests must yield exactly 2
   `201`, `reserved == 4` and `available == 1`, proving the conditional update admits every
   request that still fits (115 tests in total).
-- `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
-  requirements, test matrix, decisions and next steps.
-- Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending
-  non-functional requirements and tests, required `README.md` outline, infrastructure
-  tasks, plus a session resumption section (§8).
-- `docs/PROGRESSO.md` updated after `GET /events/:id`: endpoint and test matrix tables
-  (32 tests) and commit history.
-- `docs/PROGRESSO.md` updated after `POST /events/:id/reservations`: endpoint, non-functional
-  requirements, error contract and test matrix (70 tests), plus decisions 11-15.
+- `docs/PROGRESSO.md` as the living status document, updated after every step: endpoint,
+  non-functional requirement, error contract and configuration tables, the test matrix
+  growing from 12 to 115 tests, decisions 1-19, commit history, the pending-work checklist
+  (§7) and the session resumption notes (§8).
 - `docs/CODE_REVIEW.md` documenting the review-worthy decisions: conditional update,
   isolated transactional unit, two-layer idempotency with post-rollback re-read, strict
-  payload deserialization, exception-handler fallback, real-PostgreSQL tests and the three
+  payload deserialization, exception-handler fallback, real-PostgreSQL tests, the
+  serialization points of cancel and expiry, the worker running on every replica, and the
   pitfalls found along the way (Kotlin covariant `Map`, timestamp precision, unique-violation
-  translation).
-- `docs/PROGRESSO.md` updated after `GET /reservations/:id`: endpoint table (4 of 5 done),
-  test matrix (77 tests) and commit history.
-- `docs/PROGRESSO.md` updated after `DELETE /reservations/:id`: all 5 endpoints done, test
-  matrix (97 tests), decisions 16-17 (cancel serialization point and release guard) and
-  commit history.
-- `docs/PROGRESSO.md` updated after reservation expiry: non-functional requirement 3 done,
-  configuration table, test matrix (113 tests) and decisions 18-19 (shared atomic primitive
-  for worker and on-demand collection, `PENDING`-only expiry).
-- `docs/PROGRESSO.md` and `docs/CODE_REVIEW.md` updated after the real concurrency test:
-  requirement "never oversell" proven with 20 simultaneous requests (115 tests).
+  translation, self-invocation bypassing the Spring proxy).
 - `docker/smoke.sh`: smoke test for the running stack (26 checks) covering health, event
   creation, reservations with idempotency, sell-out, cancellation and the whole error
   contract (400/404/405/409/415/422). It exits non-zero when any expectation fails and uses
@@ -109,6 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated the eight step-by-step `docs/PROGRESSO.md` entries of this file into a single
+  bullet, and documented at the top that the two initial commits predate this changelog.
 - `capacity <= 0` now returns `422 INVALID_QUANTITY` (as planned in `docs/PLANEJAMENTO.md`
   section 6) instead of `400 VALIDATION_ERROR`.
 - Tests now run against **real PostgreSQL 16** (Docker Compose) instead of in-memory H2:
