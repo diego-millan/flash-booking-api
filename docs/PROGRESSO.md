@@ -1,6 +1,7 @@
 # Progresso — Flash Booking
 
 > Status da implementação frente ao [`PLANEJAMENTO.md`](./PLANEJAMENTO.md).
+> Pontos que valem discussão na apresentação: [`CODE_REVIEW.md`](./CODE_REVIEW.md).
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026

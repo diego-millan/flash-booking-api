@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (32 tests) and commit history.
 - `docs/PROGRESSO.md` updated after `POST /events/:id/reservations`: endpoint, non-functional
   requirements, error contract and test matrix (70 tests), plus decisions 11-15.
+- `docs/CODE_REVIEW.md` documenting the review-worthy decisions: conditional update,
+  isolated transactional unit, two-layer idempotency with post-rollback re-read, strict
+  payload deserialization, exception-handler fallback, real-PostgreSQL tests and the three
+  pitfalls found along the way (Kotlin covariant `Map`, timestamp precision, unique-violation
+  translation).
 
 ### Changed
 
