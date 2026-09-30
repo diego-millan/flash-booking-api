@@ -94,6 +94,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for worker and on-demand collection, `PENDING`-only expiry).
 - `docs/PROGRESSO.md` and `docs/CODE_REVIEW.md` updated after the real concurrency test:
   requirement "never oversell" proven with 20 simultaneous requests (115 tests).
+- `docker/smoke.sh`: smoke test for the running stack (26 checks) covering health, event
+  creation, reservations with idempotency, sell-out, cancellation and the whole error
+  contract (400/404/405/409/415/422). It exits non-zero when any expectation fails and uses
+  idempotency keys unique per run, so it can be repeated back to back.
 
 ### Changed
 
