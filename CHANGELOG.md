@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   translation).
 - `docs/PROGRESSO.md` updated after `GET /reservations/:id`: endpoint table (4 of 5 done),
   test matrix (77 tests) and commit history.
+- `docs/PROGRESSO.md` updated after `DELETE /reservations/:id`: all 5 endpoints done, test
+  matrix (97 tests), decisions 16-17 (cancel serialization point and release guard) and
+  commit history.
 
 ### Changed
 

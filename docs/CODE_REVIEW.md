@@ -200,7 +200,42 @@ provam que existem.
 
 ---
 
-## 8. Resumo para a apresentação
+## 8. Cancelamento: o `UPDATE` de status é o ponto de serialização
+
+**O que:** `DELETE /reservations/:id` cancela e devolve a capacity numa única transação
+(`ReservationWriter.cancel`), com duas instruções condicionais:
+
+```sql
+UPDATE reservations SET status = 'CANCELLED'
+ WHERE id = :id AND status IN ('PENDING','CONFIRMED');   -- 0 linhas => não devolver
+
+UPDATE events SET reserved = reserved - :quantity
+ WHERE id = :eventId AND reserved >= :quantity;          -- guarda contra valor negativo
+```
+
+**Por quê:** a única coisa que impede **duas** devoluções para a mesma reserva é que
+exatamente uma transação consiga atualizar o `status`. Quem perde a corrida (0 linhas)
+re-lê a reserva já `CANCELLED` e **não** mexe na capacity — o cancelamento é idempotente
+por construção, não por `if` na aplicação.
+
+**Prova:** `should release capacity only once when reservation is cancelled twice` faz
+`DELETE` duas vezes e confere que `reserved` volta ao original uma única vez (nunca mais);
+`ReservationWriterTest` prova que 0 linhas atualizadas não disparam `releaseReserved`.
+
+**Por que `409` numa reserva expirada:** o worker (ou a coleta *on-demand*) já devolveu a
+capacity ao marcar `EXPIRED`. Devolver de novo seria *double release*. Por isso
+`ReservationExpiredException` → `409 RESERVATION_EXPIRED`, testado em
+`should return 409 RESERVATION_EXPIRED and keep capacity when reservation expired`.
+
+| Alternativa | Por que foi rejeitada |
+|---|---|
+| Checar o `status` fora da transação e gravar depois | Dois requests veem `PENDING` → devolvem capacity duas vezes |
+| `DELETE` físico da linha | Perde a história da reserva e a guarda contra *double release* |
+| `204` sem corpo | O cliente não consegue conferir que a reserva virou `CANCELLED` |
+
+---
+
+## 9. Resumo para a apresentação
 
 | # | Decisão | Se houvesse feito ao contrário |
 |---|---------|--------------------------------|
@@ -210,3 +245,4 @@ provam que existem.
 | 4 | Jackson estrito | Payload incompleto aceito silenciosamente |
 | 5 | Handler com fallback por último | Qualquer rota errada respondia `500` |
 | 6 | Testes no Postgres real | A garantia central sem nenhuma cobertura |
+| 7 | `UPDATE` de `status` como ponto de serialização do cancel | Capacity devolvida duas vezes no `DELETE` simultâneo |

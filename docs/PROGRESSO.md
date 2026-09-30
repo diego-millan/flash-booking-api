@@ -5,9 +5,9 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** 4 de 5 endpoints completos (`DELETE /reservations/:id` é o último) · 77 testes verdes · build OK
+**Estado:** 5 de 5 endpoints completos 🎉 · 97 testes verdes · build OK
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** `DELETE /reservations/:id`
+**Próxima etapa:** expiração de reservas (worker + coleta *on-demand*) e teste de concorrência real
 
 ---
 
@@ -19,7 +19,7 @@
 | 2 | GET | `/events/:id` | ✅ Concluído | Disponibilidade (`available = capacity - reserved`), `404 NOT_FOUND`, teste end-to-end |
 | 3 | POST | `/events/:id/reservations` | ✅ Concluído | `UPDATE condicional` anti-oversell, `Idempotency-Key` obrigatório, `409 CAPACITY_EXCEEDED` |
 | 4 | GET | `/reservations/:id` | ✅ Concluído | Status, quantidade, `expiresAt`, `createdAt`; `404 NOT_FOUND` |
-| 5 | DELETE | `/reservations/:id` | ⬜ Não iniciado | Devolve capacity de forma atômica |
+| 5 | DELETE | `/reservations/:id` | ✅ Concluído | Cancela e devolve capacity atomicamente; `409 RESERVATION_EXPIRED`; repetir cancel devolve `200` sem devolver capacity de novo |
 
 ---
 
@@ -48,6 +48,7 @@ src/main/kotlin/com/cielo/flashbooking/
 │   ├── NotFoundException.kt          # 404 NOT_FOUND
 │   ├── CapacityExceededException.kt  # 409 CAPACITY_EXCEEDED
 │   ├── IdempotencyConflictException.kt# 409 IDEMPOTENCY_CONFLICT
+│   ├── ReservationExpiredException.kt# 409 RESERVATION_EXPIRED (cancelamento de reserva vencida)
 │   ├── InvalidQuantityException.kt   # 422 INVALID_QUANTITY (≤ 0)
 │   ├── QuantityLimitExceededException.kt # 422 INVALID_QUANTITY (acima do limite)
 │   ├── ApiExceptionHandler.kt        # @RestControllerAdvice
@@ -55,17 +56,17 @@ src/main/kotlin/com/cielo/flashbooking/
 ├── event/
 │   ├── Event.kt                      # entidade events
 │   ├── EventStatus.kt                # ACTIVE | PAUSED
-│   ├── EventRepository.kt            # + addReserved (UPDATE condicional)
+│   ├── EventRepository.kt            # addReserved e releaseReserved (UPDATEs condicionais)
 │   ├── EventService.kt               # create, get
 │   ├── EventController.kt            # POST /events, GET /events/:id
 │   └── dto/                          # CreateEventRequest, EventResponse
 └── reservation/
     ├── Reservation.kt                # entidade reservations
     ├── ReservationStatus.kt          # PENDING | CONFIRMED | CANCELLED | EXPIRED
-    ├── ReservationRepository.kt      # + findByIdempotencyKey
-    ├── ReservationWriter.kt          # unidade transacional: capacity + insert atômicos
-    ├── ReservationService.kt         # validações, idempotência e replay
-    ├── ReservationController.kt      # POST /events/:eventId/reservations, GET /reservations/:id
+    ├── ReservationRepository.kt      # findByIdempotencyKey + markCancelled (UPDATE condicional do cancel)
+    ├── ReservationWriter.kt          # unidade transacional: write (capacity + insert) e cancel (status + devolução)
+    ├── ReservationService.kt         # validações, idempotência, replay, consulta e cancelamento
+    ├── ReservationController.kt      # POST /events/:eventId/reservations, GET|DELETE /reservations/:id
     └── dto/                          # CreateReservationRequest, ReservationResponse, CreateReservationResult
 ```
 
@@ -86,7 +87,7 @@ src/main/kotlin/com/cielo/flashbooking/
 | 405 | `METHOD_NOT_ALLOWED` | ✅ |
 | 409 | `CAPACITY_EXCEEDED` | ✅ (`POST /reservations` sem disponibilidade) |
 | 409 | `IDEMPOTENCY_CONFLICT` | ✅ (chave já usada em outro evento) |
-| 409 | `RESERVATION_EXPIRED` | ⬜ no cancelamento |
+| 409 | `RESERVATION_EXPIRED` | ✅ (`DELETE` de reserva vencida — a capacity já foi devolvida pelo worker) |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | ✅ |
 | 422 | `INVALID_QUANTITY` | ✅ (≤ 0 e acima do limite por reserva) |
 | 500 | `INTERNAL_ERROR` | ✅ (fallback com log) |
@@ -95,20 +96,20 @@ src/main/kotlin/com/cielo/flashbooking/
 
 ## 4. Testes
 
-**77 testes, todos verdes.**
+**97 testes, todos verdes.**
 
 | Classe | Tipo | Nº | Cobre |
 |--------|------|----|-------|
 | `EventServiceTest` | Unitário (Mockito) | 8 | criação, trim, `capacity <= 0` → 422, timestamp, consulta e 404 |
 | `EventControllerTest` | Unitário (MockMvc) | 10 | 200, 201, 400, 404, 405, 415, 422, 500 |
 | `ApiExceptionHandlerTest` | Unitário (MockMvc) | 3 | 404, 405, 500 |
-| `ReservationServiceTest` | Unitário (Mockito) | 13 | validações, idempotência/replay, conflito de chave, 404, 409, re-leitura após erro de integridade, consulta |
-| `ReservationWriterTest` | Unitário (Mockito) | 4 | `UPDATE condicional` → 0 linhas vira `409`, insert só após capacity |
-| `ReservationControllerTest` | Unitário (MockMvc) | 11 | 200 (replay e consulta), 201, 400, 404, 409, 422, header ausente |
+| `ReservationServiceTest` | Unitário (Mockito) | 17 | validações, idempotência/replay, conflito de chave, 404, 409, re-leitura após erro de integridade, consulta, cancelamento |
+| `ReservationWriterTest` | Unitário (Mockito) | 8 | `UPDATE condicional` → 0 linhas vira `409`, insert só após capacity, cancel devolve capacity só uma vez |
+| `ReservationControllerTest` | Unitário (MockMvc) | 15 | 200 (replay, consulta e cancel), 201, 400, 404, 409, 422, header ausente |
 | `EventApiIntegrationTest` | Integração (Postgres) | 3 | fluxo completo `POST` → `GET`, 404 e id não numérico |
-| `ReservationApiIntegrationTest` | Integração (Postgres) | 9 | reserva reduz disponibilidade, **esgota sem oversell**, replay idempotente, consulta por id, 404/400/422, tradução de `UNIQUE` |
+| `ReservationApiIntegrationTest` | Integração (Postgres) | 13 | reserva reduz disponibilidade, **esgota sem oversell**, replay idempotente, consulta, **cancel devolve capacity (1× e 2×)**, expirada → 409, 404/400/422, tradução de `UNIQUE` |
 | `EventRepositoryTest` | Integração (Postgres) | 7 | persistência, `status` e **constraints do banco** |
-| `ReservationRepositoryTest` | Integração (Postgres) | 8 | persistência, `UNIQUE` da chave, `CHECK (quantity > 0)` e o `UPDATE condicional` no banco |
+| `ReservationRepositoryTest` | Integração (Postgres) | 12 | persistência, `UNIQUE` da chave, `CHECK (quantity > 0)`, `UPDATE condicional` do cancel e guarda de `releaseReserved` no banco |
 | `FlashBookingApplicationTests` | Integração (Postgres) | 1 | contexto + schema validado |
 
 Como rodar:
@@ -143,6 +144,8 @@ próprio PostgreSQL a impor.
 | `3f79299` | docs | progresso após `POST /events/:id/reservations` |
 | `b812e77` | docs | `docs/CODE_REVIEW.md` com os pontos que valem code review |
 | `13960a3` | feat | `GET /reservations/:id` |
+| `43bf4c2` | docs | progresso após `GET /reservations/:id` |
+| `d06677f` | feat | `DELETE /reservations/:id` com devolução atômica de capacity |
 
 ---
 
@@ -160,6 +163,8 @@ próprio PostgreSQL a impor.
 | 13 | `UPDATE condicional` como `@Modifying` no `EventRepository` | `SELECT ... FOR UPDATE` na linha do evento | Mesma razão da decisão 3: sem lock de linha no pico |
 | 14 | Unidade transacional isolada em `ReservationWriter` | `@Transactional` no próprio service | Auto-invocação não passa pelo proxy → a transação não existiria; assim o rollback de `UNIQUE` desfaz a capacity |
 | 15 | Corrida idempotente resolvida por re-leitura após rollback | lock/serialização | `DataIntegrityViolationException` → rollback → a reserva vencedora já está visível → `200` |
+| 16 | Ponto de serialização do cancel: `UPDATE status WHERE status IN ('PENDING','CONFIRMED')` na mesma transação da devolução | checar `status` na app e depois gravar | Duas chamadas simultâneas ao `DELETE` veriam `PENDING` e devolveriam capacity duas vezes; com 0 linhas atualizadas o segundo request não devolve nada |
+| 17 | Guarda `reserved >= :quantity` em `releaseReserved` | só o `CHECK (reserved >= 0)` | A devolução não pode deixar `reserved` negativo nem quando o estado do banco já divergir; `0 linhas` = nada a fazer |
 
 ---
 
@@ -178,8 +183,10 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
       teste end-to-end no Postgres
 - [x] ✅ **`GET /reservations/:id`** — feito: `200` com `status`, `quantity`, `expiresAt` e
       `createdAt`; `404 NOT_FOUND` com `details.reservationId`; id não numérico → `400`
-- [ ] ⬜ **`DELETE /reservations/:id`** — cancelar devolvendo capacity de forma atômica;
-      `409 RESERVATION_EXPIRED` para reserva já expirada
+- [x] ✅ **`DELETE /reservations/:id`** — feito: `200` com a reserva `CANCELLED`;
+      `UPDATE ... WHERE status IN ('PENDING','CONFIRMED')` + devolução de capacity na mesma
+      transação (`ReservationWriter.cancel`); cancelar de novo → `200` **sem** devolver capacity
+      outra vez; reserva vencida → `409 RESERVATION_EXPIRED`; inexistente → `404 NOT_FOUND`
 
 ### 7.2 Requisitos não funcionais
 
@@ -198,9 +205,11 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 - [ ] ⬜ **Concorrência** — N requisições **simultâneas** para capacidade < N →
       `reserved <= capacity` **sempre** (hoje a prova é sequencial)
 - [x] ✅ Idempotência: mesma chave → mesma reserva, sem duplicar (feito)
-- [ ] ⬜ Expiração devolve capacity exatamente uma vez
-- [ ] ⬜ Cancelamento devolve capacity
-- [ ] 🟡 Integração de cada endpoint + envelope de erro (4 de 5 endpoints com teste e2e)
+- [ ] 🟡 Expiração devolve capacity exatamente uma vez — depende do worker (item "Expiração"
+      acima); o cancelamento já exercita a devolução única no mesmo caminho de código
+- [x] ✅ Cancelamento devolve capacity (`releaseReserved` provado no banco e e2e: cancel 1×
+      e cancel 2× devolvem `reserved` ao original, nunca mais que isso)
+- [ ] 🟡 Integração de cada endpoint + envelope de erro (5 de 5 endpoints com teste e2e)
 - [x] ✅ Constraint `CHECK (reserved <= capacity)` provada no Postgres (feito)
 - [x] ✅ Endpoint `POST /reservations` esgota sem oversell no Postgres (feito)
 
@@ -239,16 +248,17 @@ Para voltar exatamente de onde paramos:
 ```bash
 cd ~/IdeaProjects/cielo
 docker compose up -d postgres    # banco de teste (flash_booking_test) precisa estar no ar
-./gradlew test                   # 77 testes — os de integração exigem o Postgres
+./gradlew test                   # 97 testes — os de integração exigem o Postgres
 git status                       # deve estar limpo e sincronizado com origin/master
 ```
 
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** §7.1 → `DELETE /reservations/:id` (último endpoint: cancelar devolvendo
-capacity de forma atômica, `409 RESERVATION_EXPIRED` para reserva vencida), depois expiração
-(§7.2), o teste de concorrência real (§7.3) e o `README.md` (§7.4).
+**Continuar por:** os 5 endpoints da §7.1 estão **todos concluídos**. Próximos passos, em
+ordem: (1) expiração de reservas — worker de varredura + coleta *on-demand* na leitura
+(§7.2), (2) teste de concorrência real com N requisições simultâneas (§7.3), (3) smoke test
+com `docker compose up --build` + `curl` (§7.5) e (4) `README.md` (§7.4).
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).
