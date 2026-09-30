@@ -195,4 +195,28 @@ class ReservationServiceTest {
         assertEquals("CAPACITY_EXCEEDED", ex.code)
         assertEquals(409, ex.status.value())
     }
+
+    @Test
+    fun `should return reservation when it exists`() {
+        whenever(reservationRepository.findById(5L)).thenReturn(Optional.of(writtenReservation()))
+
+        val response = service.get(5L)
+
+        assertEquals(5L, response.id)
+        assertEquals(1L, response.eventId)
+        assertEquals(2, response.quantity)
+        assertEquals(ReservationStatus.PENDING, response.status)
+        assertEquals(Instant.parse("2026-09-30T21:00:00Z"), response.expiresAt)
+    }
+
+    @Test
+    fun `should throw not found when reservation does not exist`() {
+        whenever(reservationRepository.findById(999L)).thenReturn(Optional.empty())
+
+        val ex = assertFailsWith<NotFoundException> { service.get(999L) }
+
+        assertEquals("NOT_FOUND", ex.code)
+        assertEquals(404, ex.status.value())
+        assertEquals(mapOf("reservationId" to 999L), ex.details)
+    }
 }

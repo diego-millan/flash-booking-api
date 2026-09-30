@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reservation TTL (`flash-booking.reservation.ttl-minutes`, default 10) stored in `expires_at`.
 - 38 new tests (70 in total) covering the reservation flow, including an end-to-end test
   that sells out an event and asserts `reserved == capacity` (never greater).
+- `GET /reservations/:id` endpoint returning status, quantity, `expiresAt` and `createdAt`,
+  with `404 NOT_FOUND` (`details.reservationId`) for unknown reservations (77 tests in total).
 - `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
   requirements, test matrix, decisions and next steps.
 - Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending

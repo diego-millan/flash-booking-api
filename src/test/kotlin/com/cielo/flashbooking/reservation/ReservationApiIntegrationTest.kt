@@ -166,4 +166,31 @@ class ReservationApiIntegrationTest {
 
         assertTrue(ex.message!!.contains("uq_reservations_idempotency_key"))
     }
+
+    @Test
+    fun `should return reservation when fetch after create`() {
+        val eventId = createEvent(capacity = 10)
+        val body = reserve(eventId, 3, "key-get").andExpect { status { isCreated() } }
+            .andReturn().response.getContentAsString(Charsets.UTF_8)
+        val reservationId: Int = JsonPath.read(body, "$.id")
+
+        mockMvc.get("/reservations/$reservationId").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(reservationId) }
+            jsonPath("$.eventId") { value(eventId) }
+            jsonPath("$.quantity") { value(3) }
+            jsonPath("$.status") { value("PENDING") }
+            jsonPath("$.expiresAt") { exists() }
+            jsonPath("$.createdAt") { exists() }
+        }
+    }
+
+    @Test
+    fun `should return 404 NOT_FOUND when reservation does not exist`() {
+        mockMvc.get("/reservations/999999").andExpect {
+            status { isNotFound() }
+            jsonPath("$.error.code") { value("NOT_FOUND") }
+            jsonPath("$.error.details.reservationId") { value(999999) }
+        }
+    }
 }

@@ -59,6 +59,9 @@ class ReservationService(
         }
         return CreateReservationResult(existing.toResponse(), replayed = true)
     }
+
+    fun get(id: Long): ReservationResponse =
+        reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }.toResponse()
 }
 
 internal fun Reservation.toResponse() = ReservationResponse(

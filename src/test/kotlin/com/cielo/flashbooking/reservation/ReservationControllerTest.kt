@@ -14,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.time.Instant
 
@@ -149,6 +150,39 @@ class ReservationControllerTest {
             contentType = MediaType.APPLICATION_JSON
             content = """{"quantity":"""" + """}"""
         }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.code") { value("VALIDATION_ERROR") }
+        }
+    }
+
+    @Test
+    fun `should return 200 with reservation when it exists`() {
+        whenever(reservationService.get(5L)).thenReturn(response())
+
+        mockMvc.get("/reservations/5").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(5) }
+            jsonPath("$.eventId") { value(1) }
+            jsonPath("$.quantity") { value(2) }
+            jsonPath("$.status") { value("PENDING") }
+            jsonPath("$.expiresAt") { value("2026-09-30T21:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `should return 404 NOT_FOUND when reservation does not exist`() {
+        whenever(reservationService.get(999L)).thenThrow(NotFoundException("reservationId", 999L))
+
+        mockMvc.get("/reservations/999").andExpect {
+            status { isNotFound() }
+            jsonPath("$.error.code") { value("NOT_FOUND") }
+            jsonPath("$.error.details.reservationId") { value(999) }
+        }
+    }
+
+    @Test
+    fun `should return 400 VALIDATION_ERROR when reservation id is not a number`() {
+        mockMvc.get("/reservations/abc").andExpect {
             status { isBadRequest() }
             jsonPath("$.error.code") { value("VALIDATION_ERROR") }
         }
