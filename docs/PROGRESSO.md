@@ -5,9 +5,9 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** 5 de 5 endpoints completos 🎉 · 97 testes verdes · build OK
+**Estado:** 5 de 5 endpoints completos 🎉 + expiração de reservas · 113 testes verdes · build OK
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** expiração de reservas (worker + coleta *on-demand*) e teste de concorrência real
+**Próxima etapa:** teste de concorrência real (N requisições simultâneas) → smoke test → `README.md`
 
 ---
 
@@ -29,7 +29,7 @@
 |---|-----------|--------|---------------------|
 | 1 | Múltiplas instâncias | ⬜ Pendente | `docker-compose.yml` já sobe 2 réplicas da API; falta validar com teste |
 | 2 | Nunca oversell | ✅ Concluído | `UPDATE condicional` (`WHERE reserved + qty <= capacity`) + `CHECK (reserved <= capacity)`, ambos provados no Postgres |
-| 3 | Expiração automática | 🟡 Parcial | `expires_at` + TTL de 10 min gravados na reserva; falta o worker e a coleta *on-demand* |
+| 3 | Expiração automática | ✅ Concluído | `expires_at` + TTL de 10 min; worker `@Scheduled` (5 s, configurável) **e** coleta *on-demand* na leitura de `GET`/`DELETE`, ambos pelo mesmo `UPDATE` condicional → devolve capacity 1× por reserva |
 | 4 | Idempotência | ✅ Concluído | `Idempotency-Key` obrigatório → `200` com a reserva anterior; `UNIQUE` no banco + re-leitura após rollback na corrida |
 | 5 | Consistência eventual (leitura) | ⬜ Não iniciado | `GET /events/:id` poderá servir de cache/réplica |
 | 6 | Tratamento explícito de erros | ✅ Concluído | Envelope + `ApiException` + `ApiExceptionHandler` |
@@ -60,11 +60,13 @@ src/main/kotlin/com/cielo/flashbooking/
 │   ├── EventService.kt               # create, get
 │   ├── EventController.kt            # POST /events, GET /events/:id
 │   └── dto/                          # CreateEventRequest, EventResponse
+├── FlashBookingApplication.kt        # @SpringBootApplication + @EnableScheduling
 └── reservation/
     ├── Reservation.kt                # entidade reservations
     ├── ReservationStatus.kt          # PENDING | CONFIRMED | CANCELLED | EXPIRED
-    ├── ReservationRepository.kt      # findByIdempotencyKey + markCancelled (UPDATE condicional do cancel)
-    ├── ReservationWriter.kt          # unidade transacional: write (capacity + insert) e cancel (status + devolução)
+    ├── ReservationRepository.kt      # findExpiredIds, markExpired, markCancelled, findByIdempotencyKey
+    ├── ReservationWriter.kt          # unidade transacional: write, cancel e expire (todas condicionais)
+    ├── ReservationExpiryService.kt   # worker @Scheduled + coleta on-demand na leitura
     ├── ReservationService.kt         # validações, idempotência, replay, consulta e cancelamento
     ├── ReservationController.kt      # POST /events/:eventId/reservations, GET|DELETE /reservations/:id
     └── dto/                          # CreateReservationRequest, ReservationResponse, CreateReservationResult
@@ -77,6 +79,16 @@ src/main/kotlin/com/cielo/flashbooking/
 | `V1__create_events.sql` | `events(id, name, capacity, reserved, created_at)` + `CHECK (capacity > 0)` + `CHECK (reserved <= capacity)` |
 | `V2__add_status_to_events.sql` | `status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'` + `CHECK (status IN ('ACTIVE','PAUSED'))` |
 | `V3__create_reservations.sql` | `reservations(id, event_id, quantity, status, idempotency_key, expires_at, created_at)` + `CHECK (quantity > 0)` + `UNIQUE (idempotency_key)` + `FK → events(id)` + índice em `event_id` + índice parcial em `(expires_at) WHERE status = 'PENDING'` |
+
+### Configuração
+
+| Propriedade | Default | Uso |
+|-------------|---------|-----|
+| `flash-booking.reservation.max-quantity` | `10` | limite de ingressos por reserva → `422 INVALID_QUANTITY` |
+| `flash-booking.reservation.ttl-minutes` | `10` | TTL da reserva (`expires_at`) |
+| `flash-booking.reservation.expiry-scan-ms` | `5000` | intervalo da varredura (`@Scheduled`) |
+| `flash-booking.reservation.expiry-initial-delay-ms` | `1000` | atraso inicial do worker (3600000 no perfil `test`, para não disparar durante os testes) |
+| `DB_URL` / `DB_USER` / `DB_PASSWORD` / `PORT` | `localhost:5432/flash_booking` / `flash` / `flash` / `8080` | infraestrutura |
 
 ### Contrato de erro (seção 6 do planejamento)
 
@@ -96,7 +108,7 @@ src/main/kotlin/com/cielo/flashbooking/
 
 ## 4. Testes
 
-**97 testes, todos verdes.**
+**113 testes, todos verdes.**
 
 | Classe | Tipo | Nº | Cobre |
 |--------|------|----|-------|
@@ -104,12 +116,14 @@ src/main/kotlin/com/cielo/flashbooking/
 | `EventControllerTest` | Unitário (MockMvc) | 10 | 200, 201, 400, 404, 405, 415, 422, 500 |
 | `ApiExceptionHandlerTest` | Unitário (MockMvc) | 3 | 404, 405, 500 |
 | `ReservationServiceTest` | Unitário (Mockito) | 17 | validações, idempotência/replay, conflito de chave, 404, 409, re-leitura após erro de integridade, consulta, cancelamento |
-| `ReservationWriterTest` | Unitário (Mockito) | 8 | `UPDATE condicional` → 0 linhas vira `409`, insert só após capacity, cancel devolve capacity só uma vez |
+| `ReservationWriterTest` | Unitário (Mockito) | 11 | `UPDATE condicional` → 0 linhas vira `409`, insert só após capacity, cancel e expire devolvem capacity só 1× |
+| `ReservationExpiryServiceTest` | Unitário (Mockito) | 5 | varredura varre e ignora lista vazia, coleta *on-demand* e *skip* de futuro/cancelada |
 | `ReservationControllerTest` | Unitário (MockMvc) | 15 | 200 (replay, consulta e cancel), 201, 400, 404, 409, 422, header ausente |
 | `EventApiIntegrationTest` | Integração (Postgres) | 3 | fluxo completo `POST` → `GET`, 404 e id não numérico |
 | `ReservationApiIntegrationTest` | Integração (Postgres) | 13 | reserva reduz disponibilidade, **esgota sem oversell**, replay idempotente, consulta, **cancel devolve capacity (1× e 2×)**, expirada → 409, 404/400/422, tradução de `UNIQUE` |
+| `ReservationExpiryApiIntegrationTest` | Integração (Postgres) | 5 | sweep expira e devolve capacity (1× e 2×), futuro fica `PENDING`, coleta *on-demand* na leitura, `DELETE` de vencida → `409` |
 | `EventRepositoryTest` | Integração (Postgres) | 7 | persistência, `status` e **constraints do banco** |
-| `ReservationRepositoryTest` | Integração (Postgres) | 12 | persistência, `UNIQUE` da chave, `CHECK (quantity > 0)`, `UPDATE condicional` do cancel e guarda de `releaseReserved` no banco |
+| `ReservationRepositoryTest` | Integração (Postgres) | 15 | `UNIQUE`, `CHECK`, `UPDATE` do cancel e do expire, guarda de `releaseReserved` e `findExpiredIds` |
 | `FlashBookingApplicationTests` | Integração (Postgres) | 1 | contexto + schema validado |
 
 Como rodar:
@@ -146,6 +160,7 @@ próprio PostgreSQL a impor.
 | `13960a3` | feat | `GET /reservations/:id` |
 | `43bf4c2` | docs | progresso após `GET /reservations/:id` |
 | `d06677f` | feat | `DELETE /reservations/:id` com devolução atômica de capacity |
+| `7c5cc71` | feat | expiração: worker `@Scheduled` + coleta *on-demand* |
 
 ---
 
@@ -165,6 +180,8 @@ próprio PostgreSQL a impor.
 | 15 | Corrida idempotente resolvida por re-leitura após rollback | lock/serialização | `DataIntegrityViolationException` → rollback → a reserva vencedora já está visível → `200` |
 | 16 | Ponto de serialização do cancel: `UPDATE status WHERE status IN ('PENDING','CONFIRMED')` na mesma transação da devolução | checar `status` na app e depois gravar | Duas chamadas simultâneas ao `DELETE` veriam `PENDING` e devolveriam capacity duas vezes; com 0 linhas atualizadas o segundo request não devolve nada |
 | 17 | Guarda `reserved >= :quantity` em `releaseReserved` | só o `CHECK (reserved >= 0)` | A devolução não pode deixar `reserved` negativo nem quando o estado do banco já divergir; `0 linhas` = nada a fazer |
+| 18 | Worker e coleta *on-demand* compartilham o mesmo primitivo atômico (`ReservationWriter.expire`) | lógica de expiração separada em cada caminho | As duas estratégias do planejamento (§5) devolvem capacity pelo mesmo `UPDATE ... WHERE status = 'PENDING'` → N instâncias do worker não liberam em dobro |
+| 19 | Expira apenas `PENDING` (não `CONFIRMED`) | expirar tudo que estiver vencido | `CONFIRMED` representa reserva já garantida; só `PENDING` é liberada pelo TTL |
 
 ---
 
@@ -195,8 +212,10 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
       `reserved == capacity` (nunca maior)
 - [x] ✅ **Idempotência** — `idempotency_key UNIQUE`, replay `200` com a reserva anterior e
       re-leitura após rollback quando dois requests simultâneos usam a mesma chave
-- [ ] 🟡 **Expiração** — coluna `expires_at` + TTL de 10 min já gravados; falta o worker de
-      varredura (`expires_at < now()`) **e** a coleta *on-demand* na leitura, ambos idempotentes
+- [x] ✅ **Expiração** — coluna `expires_at` + TTL de 10 min; worker `@Scheduled` varrendo
+      `expires_at < now()` a cada 5 s (`ReservationExpiryService.sweep`) **e** coleta
+      *on-demand* dentro de `GET /reservations/:id` e `DELETE /reservations/:id`; ambos
+      idempotentes pelo mesmo `UPDATE` condicional
 - [ ] ⬜ **Múltiplas instâncias** — validar com as 2 réplicas já configuradas no compose
 - [ ] ⬜ **Consistência eventual** — leitura de disponibilidade servida de cache/réplica
 
@@ -205,8 +224,8 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 - [ ] ⬜ **Concorrência** — N requisições **simultâneas** para capacidade < N →
       `reserved <= capacity` **sempre** (hoje a prova é sequencial)
 - [x] ✅ Idempotência: mesma chave → mesma reserva, sem duplicar (feito)
-- [ ] 🟡 Expiração devolve capacity exatamente uma vez — depende do worker (item "Expiração"
-      acima); o cancelamento já exercita a devolução única no mesmo caminho de código
+- [x] ✅ Expiração devolve capacity exatamente uma vez (`should release capacity only once
+      when sweep runs twice` roda o worker 2× e confere `reserved == 0`, nunca negativo)
 - [x] ✅ Cancelamento devolve capacity (`releaseReserved` provado no banco e e2e: cancel 1×
       e cancel 2× devolvem `reserved` ao original, nunca mais que isso)
 - [ ] 🟡 Integração de cada endpoint + envelope de erro (5 de 5 endpoints com teste e2e)
@@ -248,17 +267,18 @@ Para voltar exatamente de onde paramos:
 ```bash
 cd ~/IdeaProjects/cielo
 docker compose up -d postgres    # banco de teste (flash_booking_test) precisa estar no ar
-./gradlew test                   # 97 testes — os de integração exigem o Postgres
+./gradlew test                   # 113 testes — os de integração exigem o Postgres
 git status                       # deve estar limpo e sincronizado com origin/master
 ```
 
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** os 5 endpoints da §7.1 estão **todos concluídos**. Próximos passos, em
-ordem: (1) expiração de reservas — worker de varredura + coleta *on-demand* na leitura
-(§7.2), (2) teste de concorrência real com N requisições simultâneas (§7.3), (3) smoke test
-com `docker compose up --build` + `curl` (§7.5) e (4) `README.md` (§7.4).
+**Continuar por:** os 5 endpoints (§7.1) e a expiração (§7.2) estão **concluídos**. Faltam,
+em ordem: (1) teste de concorrência real — N requisições **simultâneas** contra capacidade
+menor que N (§7.3), (2) validação das 2 réplicas da API no compose (§7.2) e consistência
+eventual, (3) smoke test com `docker compose up --build` + `curl` (§7.5) e (4) `README.md`
+(§7.4).
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).

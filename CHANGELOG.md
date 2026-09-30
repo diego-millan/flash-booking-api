@@ -83,6 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/PROGRESSO.md` updated after `DELETE /reservations/:id`: all 5 endpoints done, test
   matrix (97 tests), decisions 16-17 (cancel serialization point and release guard) and
   commit history.
+- `docs/PROGRESSO.md` updated after reservation expiry: non-functional requirement 3 done,
+  configuration table, test matrix (113 tests) and decisions 18-19 (shared atomic primitive
+  for worker and on-demand collection, `PENDING`-only expiry).
 
 ### Changed
 

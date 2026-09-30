@@ -225,7 +225,15 @@ por construção, não por `if` na aplicação.
 **Por que `409` numa reserva expirada:** o worker (ou a coleta *on-demand*) já devolveu a
 capacity ao marcar `EXPIRED`. Devolver de novo seria *double release*. Por isso
 `ReservationExpiredException` → `409 RESERVATION_EXPIRED`, testado em
-`should return 409 RESERVATION_EXPIRED and keep capacity when reservation expired`.
+`should return 409 RESERVATION_EXPIRED and keep capacity when cancelling past due reservation`.
+
+**A expiração usa exatamente o mesmo primitivo:** `ReservationWriter.expire` é
+`UPDATE reservations SET status = 'EXPIRED' WHERE id = :id AND status = 'PENDING'` seguido
+de `releaseReserved` **somente se 1 linha foi afetada**. As duas estratégias do planejamento
+(worker `@Scheduled` e coleta *on-demand* na leitura) passam por essa mesma transação, então
+as 2 réplicas do compose rodando o worker não liberam a mesma vaga duas vezes —
+`should release capacity only once when sweep runs twice` roda a varredura duas vezes e
+confere que `reserved` não fica negativo.
 
 | Alternativa | Por que foi rejeitada |
 |---|---|
