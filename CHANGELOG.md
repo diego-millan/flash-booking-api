@@ -97,6 +97,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   how to run the stack and the tests, the 5 routes with real `curl` request/response examples,
   the error contract, the anti-oversell guarantee, a summarized ADR with trade-offs,
   configuration, repository structure, future evolutions and links to every document.
+- Structured logging instead of static log lines: an access log at the end of every request
+  (`request method=... path=... status=... durationMs=...`, ids included in the path),
+  business events with the objects involved (`event created eventId=...`,
+  `reservation created/replayed/cancelled reservationId=...`,
+  `reservation expired ... source=worker|on-demand`) emitted only after the transaction
+  commits, and error lines carrying `code`, `path` and `details` — `4xx` at `WARN`, `5xx` at
+  `ERROR` with the stack trace. `/actuator` requests are skipped so the compose healthcheck
+  (every 5s on each replica) never floods the log. New `RequestLoggingInterceptor` +
+  `WebConfig` in the `http` package, covered by `RequestLoggingIntegrationTest` (5 tests,
+  120 in total); the expiry sweep unit test now stubs the writer return value.
 
 ### Changed
 

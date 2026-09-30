@@ -34,6 +34,8 @@ class ReservationExpiryServiceTest {
     fun `should expire every swept reservation when they are past due`() {
         whenever(reservationRepository.findExpiredIds(eq(ReservationStatus.PENDING), any()))
             .thenReturn(listOf(5L, 6L))
+        whenever(reservationWriter.expire(any()))
+            .thenReturn(reservation(status = ReservationStatus.EXPIRED))
 
         expiryService.sweep()
 

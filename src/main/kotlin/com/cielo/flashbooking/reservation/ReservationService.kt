@@ -10,6 +10,7 @@ import com.cielo.flashbooking.event.EventRepository
 import com.cielo.flashbooking.reservation.dto.CreateReservationRequest
 import com.cielo.flashbooking.reservation.dto.CreateReservationResult
 import com.cielo.flashbooking.reservation.dto.ReservationResponse
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -25,6 +26,8 @@ class ReservationService(
     @Value("\${flash-booking.reservation.max-quantity}") private val maxQuantity: Int,
     @Value("\${flash-booking.reservation.ttl-minutes}") private val ttlMinutes: Long,
 ) {
+
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     fun create(eventId: Long, request: CreateReservationRequest, idempotencyKey: String): CreateReservationResult {
         eventRepository.findById(eventId).orElseThrow { NotFoundException("eventId", eventId) }
@@ -52,6 +55,13 @@ class ReservationService(
             return replay(existing, eventId)
         }
 
+        logger.info(
+            "reservation created reservationId={} eventId={} quantity={} expiresAt={}",
+            reservation.id,
+            reservation.eventId,
+            reservation.quantity,
+            reservation.expiresAt,
+        )
         return CreateReservationResult(reservation.toResponse(), replayed = false)
     }
 
@@ -59,6 +69,12 @@ class ReservationService(
         if (existing.eventId != eventId) {
             throw IdempotencyConflictException(eventId, existing.eventId)
         }
+        logger.info(
+            "reservation replayed reservationId={} eventId={} quantity={}",
+            existing.id,
+            existing.eventId,
+            existing.quantity,
+        )
         return CreateReservationResult(existing.toResponse(), replayed = true)
     }
 
@@ -68,9 +84,21 @@ class ReservationService(
     fun cancel(id: Long): ReservationResponse {
         val current = reservationExpiryService.collectIfExpired(reservation(id))
         return when (current.status) {
-            ReservationStatus.CANCELLED -> current.toResponse()
+            ReservationStatus.CANCELLED -> {
+                logger.info("reservation cancel skipped reservationId={} status=CANCELLED", id)
+                current.toResponse()
+            }
             ReservationStatus.EXPIRED -> throw ReservationExpiredException(id)
-            else -> reservationWriter.cancel(id).toResponse()
+            else -> {
+                val cancelled = reservationWriter.cancel(id)
+                logger.info(
+                    "reservation cancelled reservationId={} eventId={} quantity={}",
+                    cancelled.id,
+                    cancelled.eventId,
+                    cancelled.quantity,
+                )
+                cancelled.toResponse()
+            }
         }
     }
 
