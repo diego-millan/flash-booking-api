@@ -1,27 +1,31 @@
 # Roteiro de apresentação — Flash Booking
 
-> Como conduzir a demonstração e o code review **sem depender de ferramentas auxiliares**:
-> comandos prontos para colar e as saídas reais obtidas contra a pilha do Compose
-> (Postgres + 2 réplicas + load balancer).
-> Fundamento teórico: [`PLANEJAMENTO.md`](./PLANEJAMENTO.md). Detalhes de código:
-> [`CODE_REVIEW.md`](./CODE_REVIEW.md). Comandos isolados: [`MANUAL.md`](./MANUAL.md).
+> Passo a passo para conduzir a demonstração: linha do tempo, os comandos com as saídas
+> reais obtidas contra a pilha do Compose (Postgres + 2 réplicas + load balancer) e, junto de
+> cada etapa, a explicação do que ela mostra e por que as decisões foram tomadas.
+> Fundamento teórico: [`PLANEJAMENTO.md`](./PLANEJAMENTO.md). Detalhes de código e resumo das
+> decisões: [`CODE_REVIEW.md`](./CODE_REVIEW.md). Comandos isolados: [`MANUAL.md`](./MANUAL.md).
 
 ---
 
-## 1. Linha do tempo (~12 min)
+## 1. Linha do tempo (~13 min)
 
-| # | Bloco | Tempo | Material de apoio |
-|---|-------|-------|-------------------|
-| 1 | Contexto e requisitos | 1 min | `PLANEJAMENTO` §1 |
-| 2 | Arquitetura | 1 min | `PLANEJAMENTO` §2 |
-| 3 | Decisão central: nunca oversell | 1,5 min | `PLANEJAMENTO` §3 |
-| 4 | **Demo A** — fluxo feliz + idempotência | 2 min | seção 4 |
-| 5 | **Demo B** — 20 requisições × 5 lugares | 2 min | seção 5 |
-| 6 | **Demo C** — contrato de erros + prova no banco | 2 min | seção 6 |
-| 7 | **Demo D** — expiração automática | 1 min | seção 7 |
-| 8 | Testes (126) | 1 min | seção 8 |
-| 9 | Code review: perguntas prováveis | 3 min | seção 9 |
-| 10 | Evoluções e fechamento | 0,5 min | `PLANEJAMENTO` §9 |
+| # | Etapa | Tempo | Seção |
+|---|-------|-------|-------|
+| 1 | Contexto e requisitos | 1 min | 3 |
+| 2 | Arquitetura | 1 min | 4 |
+| 3 | Decisão central: nunca oversell | 1,5 min | 5 |
+| 4 | **Demo A** — fluxo feliz + idempotência | 2 min | 6 |
+| 5 | **Demo B** — 20 requisições × 5 lugares | 2 min | 7 |
+| 6 | **Demo C** — contrato de erros + prova no banco | 2 min | 8 |
+| 7 | **Demo D** — expiração automática | 1 min | 9 |
+| 8 | Testes, contrato e logs | 2 min | 10–11 |
+| 9 | Evoluções e fechamento | 0,5 min | 12 |
+
+A justificativa de cada decisão está escrita **dentro da etapa que a demonstra** — a
+conversa técnica acompanha o fluxo do sistema em vez de ficar reservada para um bloco
+separado no fim. Se a discussão puxar um assunto antes da hora, o comando da seção
+correspondente já está pronto para colar.
 
 ---
 
@@ -40,28 +44,42 @@ para os `curl`.
 
 ---
 
-## 3. Narrativa bloco a bloco
+## 3. Contexto e requisitos (1 min)
 
-### Bloco 1 — Contexto (1 min)
+O sistema é uma API de reserva de ingressos em *flash sale*: janelas de venda com pico de
+concorrência e capacidade limitada por evento. A exigência que estrutura todo o projeto é
+**nunca vender mais ingressos que existem** — e isso vale com N instâncias da API atendendo
+ao mesmo tempo, não com uma única cópia isolada.
 
-> "Sistema de reserva de ingressos em *flash sale*: janelas de venda com pico de
-> concorrência e capacidade limitada. A exigência que estrutura tudo é
-> **nunca vender mais ingressos que existem** — com N instâncias da API rodando ao mesmo
-> tempo."
+São cinco endpoints (`POST /events`, `GET /events/:id`, `POST /events/:id/reservations`,
+`GET /reservations/:id`, `DELETE /reservations/:id`) e seis requisitos não funcionais. Os
+dois primeiros — múltiplas instâncias e a garantia de não oversell — são os que sustentam
+toda a discussão técnica, porque é neles que a separação entre "lógica de aplicação" e
+"integridade transacional" aparece.
 
-Cinco endpoints, seis requisitos não funcionais (os dois primeiros, múltiplas instâncias e
-nunca oversell, são os que sustentam a discussão).
+---
 
-### Bloco 2 — Arquitetura (1 min)
+## 4. Arquitetura (1 min)
 
-> "API **stateless** com N instâncias atrás de um load balancer, **Postgres como fonte de
-> verdade** e um worker de expiração que roda em cada instância. Oversell é problema de
-> *integridade transacional*, não de lógica de aplicação — lógica na app falha com N
-> instâncias."
+A API é **stateless** com N instâncias atrás de um load balancer (nginx, round-robin), o
+**Postgres é a fonte de verdade** e um worker de expiração roda embutido em cada instância.
+O ponto de partida da conversa é este: oversell é problema de *integridade transacional* —
+qualquer regra de negócio escrita só na aplicação deixa de valer assim que existe mais de
+uma cópia rodando, porque duas instâncias não enxergam a memória uma da outra.
 
-### Bloco 3 — Decisão central: nunca oversell (1,5 min)
+Vale também explicar o modelo de leitura: não há cache intermediário, toda leitura vai
+direto ao Postgres — e como qualquer réplica atende leitura e escrita pelo mesmo banco, a
+consistência é **forte** de qualquer instância, acima do mínimo pedido pelo requisito de
+consistência eventual. Cache ou CDN no pico é uma evolução consciente (seção 12), não uma
+necessidade escondida.
 
-Apresente a tabela de alternativas e descarte uma a uma:
+---
+
+## 5. Decisão central: nunca vender mais do que existe (1,5 min)
+
+Esta é a etapa mais importante da apresentação: mostrar que as alternativas foram
+comparadas e descartadas por motivo técnico, não por preferência. A tabela de alternativas,
+com o descarte de cada uma, está no `PLANEJAMENTO` §3:
 
 | # | Abordagem | Por que não |
 |---|-----------|-------------|
@@ -70,7 +88,7 @@ Apresente a tabela de alternativas e descarte uma a uma:
 | C | Checagem só na aplicação + `INSERT` | **falha com concorrência** (oversell garantido) |
 | D | Fila/lock distribuído | mais um ponto de falha para o modelo atual |
 
-A e a segunda camada:
+A opção escolhida e a segunda camada:
 
 ```sql
 UPDATE events SET reserved = reserved + :q
@@ -78,12 +96,25 @@ UPDATE events SET reserved = reserved + :q
 -- 2a camada: CHECK (reserved <= capacity)
 ```
 
-> "O `WHERE` é reavaliado **dentro do lock da linha**: quem espera, reavalia contra o valor
-> já atualizado e não encaixa. E mesmo que a aplicação tenha bug, o banco não deixa passar."
+O que convém detalhar aqui: o `WHERE` é reavaliado **dentro do lock da linha**. Quando duas
+requisições disputam o mesmo evento, uma atualiza e a outra espera; ao conseguir o lock, ela
+reavalia a condição contra o valor **já atualizado** e não encaixa mais — daí as 0 linhas e
+o `409`. Já a opção B seguraria um lock desde a leitura, e numa janela de venda o pico de
+requisições transformaria isso em fila. Mesmo que a aplicação venha a ter um bug, a segunda
+camada (`CHECK (reserved <= capacity)`) impede a violação no banco — é o que a Demo C
+mostra ao vivo.
+
+Sobre a fronteira de transação: a escrita fica encapsulada em `ReservationWriter`, um bean
+com `@Transactional` próprio. Isso não é estética — se o serviço simplesmente chamasse um
+método `@Transactional` dele mesmo, a transação não abriria (auto-invocação não passa pelo
+proxy do Spring), e um `409` de capacidade no meio do caminho deixaria a reserva sem
+devolver a vaga. Com o bean separado, `UPDATE` da capacidade e `INSERT` da reserva
+acontecem na mesma transação: ou as duas coisas acontecem, ou nenhuma. `ReservationWriterTest`
+cobre exatamente esse caso.
 
 ---
 
-## 4. Demo A — fluxo feliz e idempotência (2 min)
+## 6. Demo A — fluxo feliz e idempotência (2 min)
 
 ```bash
 # 1. criar evento
@@ -109,14 +140,24 @@ curl -s -X DELETE localhost:8080/reservations/34    # 200 CANCELLED (idempotente
 curl -s localhost:8080/events/38                    # reserved=0 — devolvido 1× só
 ```
 
-**Fala:** "idempotência em duas camadas: a chave é obrigatória (o cliente nunca perde a
-replay sem saber), a repetição devolve `200` com a reserva anterior, e o `UNIQUE` no banco é
-o guarda final — no caso de dois requests simultâneos, o perdedor sofre rollback da capacity
-e re-lê a chave."
+O que esta etapa demonstra é que a idempotência existe em **duas camadas**. A primeira é o
+cliente: a `Idempotency-Key` é obrigatória (`400` se faltar), então um retry nunca passa
+despercebido. A segunda é o servidor: a repetição da mesma chave devolve `200` com a
+reserva original em vez de criar outra, e o `UNIQUE` no banco é o guarda final — quando dois
+requests com a mesma chave chegam ao mesmo tempo, o perdedor sofre rollback (a capacity é
+desfeita junto) e re-lê a chave, devolvendo a vencedora. É por isso que o caminho captura
+`DataIntegrityViolationException` e não `DuplicateKeyException`: nesse fluxo o Hibernate
+traduz o erro para a classe-pai, e capturar a classe errada faria o `catch` simplesmente
+nunca disparar.
+
+O cancelamento também é idempotente: o `UPDATE reservations SET status = ... WHERE status
+IN ('PENDING','CANCELLED')` é o ponto de serialização, e quando ele afeta **0 linhas** a
+capacity não é devolvida. Por isso o `DELETE` duplicado responde `200` de novo, mas o
+`reserved` do evento cai para 0 uma única vez — o passo 4 acima mostra justamente isso.
 
 ---
 
-## 5. Demo B — 20 requisições × 5 lugares (2 min) ⭐
+## 7. Demo B — 20 requisições × 5 lugares (2 min) ⭐
 
 ```bash
 # criar evento com 5 lugares
@@ -150,7 +191,8 @@ curl -s localhost:8080/events/$EV
  39 |        5 |        5 |         0
 ```
 
-Prova de que passou pelas **duas réplicas** (outro terminal, `docker compose logs -f lb`):
+Prova de que o tráfego foi dividido pelas **duas réplicas** (outro terminal,
+`docker compose logs -f lb`):
 
 ```
 "POST /events/39/reservations" 201 via 172.18.0.3:8080   ← cielo-api-1
@@ -159,13 +201,15 @@ Prova de que passou pelas **duas réplicas** (outro terminal, `docker compose lo
 "POST /events/39/reservations" 201 via 172.18.0.4:8080
 ```
 
-**Fala:** "exatamente 5 `201`, 15 `409` e `reserved == capacity` — nunca maior. E as duas
-réplicas emitiram tanto `201` quanto `409`: a escrita está dividida entre instâncias e a
-garantia continua valendo, porque ela vive no banco."
+Este é o momento de conectar o resultado com a decisão da seção 5: saíram exatamente 5
+`201`, 15 `409` e `reserved == capacity` — **nunca maior**. E as duas réplicas emitiram
+tanto `201` quanto `409`, o que mostra que a escrita está mesmo dividida entre instâncias:
+a garantia não está no código de uma delas, está no `WHERE` reavaliado dentro do lock da
+linha e na constraint do banco, que as duas instâncias obedecem.
 
 ---
 
-## 6. Demo C — contrato de erros + prova no banco (2 min)
+## 8. Demo C — contrato de erros + prova no banco (2 min)
 
 ### Erros (envelope único)
 
@@ -184,8 +228,18 @@ curl -s -X DELETE localhost:8080/events/38
 # 405 METHOD_NOT_ALLOWED
 ```
 
-Os 8 códigos exigidos (400/404/405/409/415/422/500) e as variações estão no
-[`MANUAL.md`](./MANUAL.md) §4, todos verificados.
+Todos os erros usam o mesmo envelope `{"error": {code, message, details}}`. O contrato
+prevê 8 códigos em 7 status (`400`, `404`, `405`, `409`, `415`, `422`, `500`) e o sistema
+entrega ainda o `IDEMPOTENCY_CONFLICT` como terceiro `409`, cobrindo a regra de idempotência
+em outro evento — a tabela completa com cada variação verificada está no
+[`MANUAL.md`](./MANUAL.md) §4.
+
+Dois detalhes desta etapa merecem explicação. O primeiro é o `400` de payload ausente: o
+Jackson está em modo estrito (`fail-on-missing-creator-properties`), então um `capacity`
+faltando não é silenciosamente aceito como `0` — vira erro de validação, que é o comportamento
+seguro para uma capacidade de evento. O segundo é o `405`/`404`: rotas e métodos errados
+nunca chegam ao tratador genérico, porque existe um tratamento explícito para cada caso e o
+`catch-all` de `500` é o **último** a falar (coberto por `ApiExceptionHandlerTest`).
 
 ### Prova no banco (a segunda camada)
 
@@ -214,7 +268,7 @@ ERROR:  new row for relation "events" violates check constraint "events_check"
 DETAIL:  Failing row contains (40, Esgotado, 3, 4, ...)
 ```
 
-E as migrations de verdade:
+As migrations de verdade, executadas pelo Flyway no startup:
 
 ```bash
 docker compose exec postgres psql -U flash -d flash_booking \
@@ -227,8 +281,10 @@ docker compose exec postgres psql -U flash -d flash_booking \
  3 | create reservations  | t
 ```
 
-**Fala:** "o H2 foi removido porque ele *simula* essas garantias. Aqui elas existem de
-verdade no Postgres e foram provadas — inclusive tentando violá-las de propósito."
+Essa prova também motiva a escolha da suíte de testes: o H2 foi removido do
+projeto porque ele apenas *simula* essas garantias. Aqui elas existem de verdade no Postgres
+e foram testadas inclusive tentando violá-las de propósito — os testes de integração rodam
+as migrations com Flyway e validam o schema com `ddl-auto: validate`.
 
 ### Contrato interativo — Swagger (30 s, opcional)
 
@@ -244,14 +300,15 @@ curl -s localhost:8080/v3/api-docs \
 ['POST /events', 'POST /events/{eventId}/reservations', 'GET /reservations/{id}', 'DELETE /reservations/{id}', 'GET /events/{id}']
 ```
 
-**Fala:** "o contrato não é um documento escrito à mão — o código gera, e
-`OpenApiContractIntegrationTest` lê esse JSON e exige rotas, status (inclusive o `200` do
-replay), a header `Idempotency-Key` obrigatória e o schema do envelope. Mudou o endpoint e
-não a doc, o teste falha: é a defesa contra o contrato desatualizado."
+O contrato não é um documento escrito à mão: o código gera (springdoc) e
+`OpenApiContractIntegrationTest` lê esse JSON e exige que rotas, status (inclusive o `200`
+do replay), a header `Idempotency-Key` obrigatória e o schema do envelope baterem com a
+implementação. Mudou o endpoint e não a documentação, o teste falha — é a defesa contra
+contrato desatualizado.
 
 ---
 
-## 7. Demo D — expiração automática (1 min)
+## 9. Demo D — expiração automática (1 min)
 
 O TTL é de 10 minutos — maior que a duração da apresentação. Em vez de esperar, **simule o
 tempo passando** direto no banco (não há como a API acelerar o relógio):
@@ -279,17 +336,26 @@ Linha correspondente no log (`docker compose logs api`):
 INFO reservation expired reservationId=49 eventId=46 quantity=4 source=worker
 ```
 
-**Fala:** "a capacity foi devolvida **sem nenhuma leitura HTTP** — quem agiu foi o worker.
-Como 2 instâncias rodam o worker ao mesmo tempo, a devolução é única porque as duas passam
-pelo mesmo `UPDATE ... WHERE status = 'PENDING'`: só uma delas atualiza a linha; a outra vê
-0 linhas e não mexe na capacity. O mesmo vale para o `DELETE`."
+A capacity foi devolvida **sem nenhuma leitura HTTP** — quem agiu foi o worker, que roda em
+cada réplica a cada 5 segundos. Como duas instâncias executam a varredura ao mesmo tempo, a
+devolução continua única: ambas passam pelo mesmo `UPDATE reservations SET status = 'EXPIRED'
+WHERE id = ... AND status = 'PENDING'`, só uma atualiza a linha, e a outra vê 0 linhas e não
+toca na capacity. É o mesmo ponto de serialização do cancelamento (seção 6), aplicado à
+expiração.
 
-Depois mostre que um cancelamento de reserva já vencida responde
-`409 RESERVATION_EXPIRED` (a capacity já saiu; devolver de novo seria *double release*).
+Para fechar a etapa, cancele a reserva que acabou de expirar:
+
+```bash
+curl -s -X DELETE localhost:8080/reservations/49
+# 409 {"error":{"code":"RESERVATION_EXPIRED","details":{"reservationId":49}}}
+```
+
+A resposta `409` é proposital: a capacity já saiu pelo worker, e devolvê-la de novo seria
+um *double release* (vender o mesmo lugar duas vezes com a fila de expiração).
 
 ---
 
-## 8. Testes (1 min)
+## 10. Testes e documentação (1 min)
 
 ```bash
 docker compose up -d postgres
@@ -303,11 +369,17 @@ xdg-open build/reports/tests/test/index.html
 | Integração (Postgres real + Flyway) | `*RepositoryTest`, `*ApiIntegrationTest`, `OpenApiContractIntegrationTest`, `RequestLoggingIntegrationTest` | 55 |
 | Concorrência (HTTP real, porta aleatória) | `ReservationConcurrencyIntegrationTest` | 2 |
 
-Destaque: o teste de concorrência dispara **20 requisições simultâneas** (portão de partida
-com `CountDownLatch`) contra 5 lugares e exige exatamente 5 × `201`, 15 × `409`, com
-`reserved == capacity`.
+Os 126 testes rodam em cerca de 16 segundos, então dá para executar ao vivo. O ponto que
+costuma ser questionado é a escolha do banco: os testes de integração usam o Postgres do
+Docker (banco `flash_booking_test`, migrations pelo Flyway) porque uma constraint como
+`reserved <= capacity` não significa nada se quem a impõe é um banco de simulação. Dentro
+desse grupo estão também o teste do contrato OpenAPI e o teste do log de acesso.
 
-Comando para rodar só um teste (nome exato, entre aspas):
+O teste de concorrência merece destaque: ele dispara **20 requisições simultâneas**
+(liberadas por um `CountDownLatch`) contra um evento de 5 lugares e exige exatamente 5 ×
+`201` e 15 × `409`, com `reserved == capacity` — é a versão automatizada da Demo B.
+
+Para rodar um único teste, o nome completo entre aspas:
 
 ```bash
 ./gradlew test --tests "com.cielo.flashbooking.reservation.ReservationConcurrencyIntegrationTest"
@@ -315,30 +387,7 @@ Comando para rodar só um teste (nome exato, entre aspas):
 
 ---
 
-## 9. Code review — perguntas prováveis e respostas
-
-| Pergunta | Resposta em uma frase | Onde está a prova |
-|----------|----------------------|-------------------|
-| Por que não `FOR UPDATE`? | lock desde a leitura contenha no pico; o `WHERE` reavaliado já resolve | `PLANEJAMENTO` §3, teste 20×5 |
-| E se a app falhar entre o `UPDATE` e o `INSERT`? | `ReservationWriter` é um bean transacional separado — auto-invocação não gera proxy e a transação não abriria | `CODE_REVIEW` §2, `ReservationWriterTest` |
-| Duas requisições simultâneas com a mesma chave? | `UNIQUE` → rollback (capacity devolvida) → re-leitura → `200` com a vencedora | `CODE_REVIEW` §3 |
-| Por que capturar `DataIntegrityViolationException` e não `DuplicateKeyException`? | nesse caminho o Hibernate traduz para a classe-pai; capturar a errada faria o `catch` nunca disparar | `CODE_REVIEW` §7.3 |
-| `capacity` ausente não vira 0? | não: Jackson estrito (`fail-on-missing-creator-properties`) → `400` | Demo C |
-| Rota/método errado responde 500? | não: 404/405/415/400 explícitos (o `catch-all` é o último a falar) | Demo C, `ApiExceptionHandlerTest` |
-| Cancelar duas vezes devolve vaga em dobro? | não: `UPDATE ... WHERE status IN (...)` é o ponto de serialização; 0 linhas ⇒ não devolve | Demo A, teste "cancelled twice" |
-| 2 workers não liberam a mesma vaga? | mesmo `UPDATE ... WHERE status='PENDING'` | Demo D, teste "sweep runs twice" |
-| As constraints existem mesmo? | `pg_constraint` mostra `events_check` e o `UNIQUE` | Demo C |
-| Testes usam banco de verdade? | Sim — H2 removido, Flyway 3/3 `success=t` | Demo C |
-| Tem OpenAPI/Swagger? | Sim, gerado **do código** (springdoc) e **testado** — `OpenApiContractIntegrationTest` trava rotas, status, header obrigatória e envelope; mudou o endpoint sem mudar a doc, o teste falha | Demo C, `/v3/api-docs` |
-| Por que a API não loga nada útil? | loga: acesso com status+duração, criações com IDs e erros com `code`/`path` (4xx em `WARN`, 5xx em `ERROR`, healthcheck ignorado) | seção 10 |
-| E a consistência eventual da leitura? | leitura vai direto ao Postgres em qualquer réplica — é **forte**, acima do mínimo pedido; cache/CDN é evolução | `PROGRESSO` §2, NFR 5 |
-
-Resumo visual (útil para a última tela) — `CODE_REVIEW` §9: as 9 decisões e "se tivesse
-feito ao contrário".
-
----
-
-## 10. Logs (mostrar se perguntarem sobre observabilidade)
+## 11. Logs (1 min)
 
 ```bash
 docker compose logs api | grep -E "reservation|api error|request method" | tail -10
@@ -353,16 +402,17 @@ INFO reservation cancelled reservationId=48 eventId=45 quantity=3
 INFO reservation expired reservationId=49 eventId=46 quantity=4 source=worker
 ```
 
-Regras adotadas: acesso no fim de **cada** requisição (método, caminho com IDs, status,
-duração); eventos de negócio com os IDs **depois** da transação confirmar; 4xx em `WARN`
-(não `ERROR`, para não mascarar incidentes reais); 5xx em `ERROR` com stack trace.
-Do que o acesso **não** trata: `/actuator/health` e os endpoints de documentação
-(`/v3/api-docs`, `/swagger-ui`) — healthcheck a cada 5 s em cada réplica e spec/UI que não
-são tráfego de negócio.
+A observabilidade está em três camadas: uma linha de acesso no fim de **cada** requisição
+(método, caminho com os IDs, status e duração), os eventos de negócio com os IDs dos objetos
+envolvidos — registrados **depois** da transação confirmar, para não logar estado que pode
+ser revertido — e os erros com `code`, `path` e `details`, em `WARN` para 4xx e em `ERROR`
+com stack trace para 5xx. O que ficou de fora do log de acesso, de propósito: `/actuator/health`
+(consultado pelo healthcheck a cada 5 s em cada réplica) e os endpoints de documentação
+(`/v3/api-docs`, `/swagger-ui`), que são artefato estático e não tráfego de negócio.
 
 ---
 
-## 11. Fechamento — evoluções futuras (30 s)
+## 12. Fechamento — evoluções futuras (30 s)
 
 1. Leitura via **réplica/CDN** no pico (consistência eventual de verdade)
 2. **Sharding por evento** quando um único Postgres não bastar
@@ -370,9 +420,15 @@ são tráfego de negócio.
 4. **Rate limiting / fila de espera** na janela de venda
 5. Worker desacoplado da API (hoje roda embutido em cada réplica)
 
+Fecha-se com o registro de que essas são evoluções conscientes: os requisitos atuais são
+atendidos com leitura forte e garantia no banco, e cada item da lista acima só entra quando
+houver uma medição que justifique o custo. A tabela `CODE_REVIEW` §9 resume as nove decisões
+e o que teria acontecido no lugar de cada uma delas caso a escolha tivesse sido a opção
+rejeitada.
+
 ---
 
-## 12. Plano B — se algo travar na apresentação
+## 13. Plano B — se algo travar na apresentação
 
 | Situação | Reação |
 |----------|--------|
@@ -381,6 +437,6 @@ são tráfego de negócio.
 | Porta 8080 ocupada | `docker compose down` e suba de novo |
 | A pilha não subiu o jar | `./gradlew bootJar` e `docker compose up --build -d` |
 | Quer repetir a Demo B | crie **outro** evento (as chaves `Idempotency-Key` são únicas no banco; reusar em outro evento dá `409 IDEMPOTENCY_CONFLICT`) |
-| Expiração não aconteceu | o TTL é 10 min: use o `UPDATE expires_at` da seção 7 |
+| Expiração não aconteceu | o TTL é 10 min: use o `UPDATE expires_at` da seção 9 |
 
 Encerre com `docker compose down` (ou `down -v` para zerar os dados).

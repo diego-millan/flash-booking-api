@@ -128,6 +128,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the commands to open the UI and fetch the spec, `APRESENTACAO` a live demo block and a
   likely review question, `CODE_REVIEW` decision 9 (contract generated and tested vs handwritten
   spec), and every test count moved from 120 to 126.
+- `docs/APRESENTACAO.md` restructured as a narrative guide: every stage now carries its
+  commands, the real output and the explanation of what that stage proves — why the
+  conditional `UPDATE` instead of `FOR UPDATE`, the transactional boundary of
+  `ReservationWriter`, idempotency in two layers with the `UNIQUE` fallback, strict Jackson
+  deserialization, the status update as the serialization point, and the two-worker expiry.
+  The rationale lives inside the stage that demonstrates it instead of in a separate list of
+  anticipated questions, and the timeline maps the 9 stages onto the 13 sections.
 
 ### Changed
 

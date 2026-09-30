@@ -409,7 +409,7 @@ atualizar a documentação, o teste falha (proteção contra *drift*).
 | [`docs/PLANEJAMENTO.md`](docs/PLANEJAMENTO.md) | requisitos, arquitetura, modelo de dados e decisões originais |
 | [`docs/PROGRESSO.md`](docs/PROGRESSO.md) | status da implementação, testes, 19 decisões e pendências |
 | [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) | pontos que valem code review, alternativas rejeitadas e pegadinhas |
-| [`docs/APRESENTACAO.md`](docs/APRESENTACAO.md) | roteiro da demonstração: linha do tempo, comandos com saída real e perguntas prováveis |
+| [`docs/APRESENTACAO.md`](docs/APRESENTACAO.md) | roteiro da demonstração: linha do tempo, comandos com saída real e a explicação de cada etapa |
 | [`docs/MANUAL.md`](docs/MANUAL.md) | passo a passo manual: Docker, um teste por vez e `curl` de cada endpoint |
 | [`docs/SMOKE_TEST.md`](docs/SMOKE_TEST.md) | evidências da pilha real (26/26, réplicas, worker) |
 | [`CHANGELOG.md`](CHANGELOG.md) | histórico das mudanças |
