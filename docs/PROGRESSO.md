@@ -5,9 +5,9 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** 5 de 5 endpoints completos 🎉 + expiração de reservas · 113 testes verdes · build OK
+**Estado:** 5 de 5 endpoints + expiração + teste de concorrência · 115 testes verdes · build OK
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** teste de concorrência real (N requisições simultâneas) → smoke test → `README.md`
+**Próxima etapa:** smoke test com `docker compose up --build` + `curl` (com as 2 réplicas) → `README.md`
 
 ---
 
@@ -108,7 +108,7 @@ src/main/kotlin/com/cielo/flashbooking/
 
 ## 4. Testes
 
-**113 testes, todos verdes.**
+**115 testes, todos verdes.**
 
 | Classe | Tipo | Nº | Cobre |
 |--------|------|----|-------|
@@ -122,6 +122,7 @@ src/main/kotlin/com/cielo/flashbooking/
 | `EventApiIntegrationTest` | Integração (Postgres) | 3 | fluxo completo `POST` → `GET`, 404 e id não numérico |
 | `ReservationApiIntegrationTest` | Integração (Postgres) | 13 | reserva reduz disponibilidade, **esgota sem oversell**, replay idempotente, consulta, **cancel devolve capacity (1× e 2×)**, expirada → 409, 404/400/422, tradução de `UNIQUE` |
 | `ReservationExpiryApiIntegrationTest` | Integração (Postgres) | 5 | sweep expira e devolve capacity (1× e 2×), futuro fica `PENDING`, coleta *on-demand* na leitura, `DELETE` de vencida → `409` |
+| `ReservationConcurrencyIntegrationTest` | Integração (HTTP real, porta aleatória) | 2 | **20 requisições simultâneas** (portão de partida) contra 5 lugares: `reserved` nunca passa de `capacity`, e com `quantity=2` toda requisição que ainda cabe é aceita |
 | `EventRepositoryTest` | Integração (Postgres) | 7 | persistência, `status` e **constraints do banco** |
 | `ReservationRepositoryTest` | Integração (Postgres) | 15 | `UNIQUE`, `CHECK`, `UPDATE` do cancel e do expire, guarda de `releaseReserved` e `findExpiredIds` |
 | `FlashBookingApplicationTests` | Integração (Postgres) | 1 | contexto + schema validado |
@@ -161,6 +162,7 @@ próprio PostgreSQL a impor.
 | `43bf4c2` | docs | progresso após `GET /reservations/:id` |
 | `d06677f` | feat | `DELETE /reservations/:id` com devolução atômica de capacity |
 | `7c5cc71` | feat | expiração: worker `@Scheduled` + coleta *on-demand* |
+| `e894978` | test | teste de concorrência real com 20 requisições simultâneas |
 
 ---
 
@@ -221,8 +223,11 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 
 ### 7.3 Testes (seção 8 do planejamento)
 
-- [ ] ⬜ **Concorrência** — N requisições **simultâneas** para capacidade < N →
-      `reserved <= capacity` **sempre** (hoje a prova é sequencial)
+- [x] ✅ **Concorrência** — `ReservationConcurrencyIntegrationTest` dispara **20 requisições
+      simultâneas** (todas liberadas pelo mesmo `CountDownLatch`) contra um evento de 5
+      lugares, via HTTP real na porta aleatória: exatamente 5 `201`, 15 `409`, e
+      `reserved == capacity` (nunca maior); com `quantity=2`, exatamente 2 `201` e
+      `available == 1` — toda requisição que ainda cabe é aceita
 - [x] ✅ Idempotência: mesma chave → mesma reserva, sem duplicar (feito)
 - [x] ✅ Expiração devolve capacity exatamente uma vez (`should release capacity only once
       when sweep runs twice` roda o worker 2× e confere `reserved == 0`, nunca negativo)
@@ -267,18 +272,18 @@ Para voltar exatamente de onde paramos:
 ```bash
 cd ~/IdeaProjects/cielo
 docker compose up -d postgres    # banco de teste (flash_booking_test) precisa estar no ar
-./gradlew test                   # 113 testes — os de integração exigem o Postgres
+./gradlew test                   # 115 testes — os de integração exigem o Postgres
 git status                       # deve estar limpo e sincronizado com origin/master
 ```
 
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** os 5 endpoints (§7.1) e a expiração (§7.2) estão **concluídos**. Faltam,
-em ordem: (1) teste de concorrência real — N requisições **simultâneas** contra capacidade
-menor que N (§7.3), (2) validação das 2 réplicas da API no compose (§7.2) e consistência
-eventual, (3) smoke test com `docker compose up --build` + `curl` (§7.5) e (4) `README.md`
-(§7.4).
+**Continuar por:** os 5 endpoints (§7.1), a expiração (§7.2) e o teste de concorrência
+(§7.3) estão **concluídos**. Faltam, em ordem: (1) smoke test com
+`docker compose up --build` + `curl` nas 2 réplicas da API (§7.5) — também cobre "múltiplas
+instâncias" e "consistência eventual" (§7.2), (2) `README.md` (§7.4) e (3) revisão final do
+`CHANGELOG.md`.
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).

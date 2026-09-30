@@ -35,7 +35,11 @@ pode ter bug; o banco não deixa passar.
 
 **Prova:** `ReservationRepositoryTest` (0 linhas quando estoura a capacidade),
 `ReservationApiIntegrationTest.should return 409 CAPACITY_EXCEEDED and never oversell when event sells out`
-(capacidade 3, 4ª venda → 409 e `reserved == capacity`, nunca maior).
+(capacidade 3, 4ª venda → 409 e `reserved == capacity`, nunca maior) e
+`ReservationConcurrencyIntegrationTest` — **20 requisições simultâneas** via HTTP real
+(portão de partida único) contra 5 lugares: exatamente 5 × `201`, 15 × `409` e
+`reserved == 5`; com `quantity=2`, 2 × `201` e `available == 1`, provando que o `WHERE`
+reavaliado ainda admite tudo que cabe.
 
 ---
 
@@ -254,3 +258,4 @@ confere que `reserved` não fica negativo.
 | 5 | Handler com fallback por último | Qualquer rota errada respondia `500` |
 | 6 | Testes no Postgres real | A garantia central sem nenhuma cobertura |
 | 7 | `UPDATE` de `status` como ponto de serialização do cancel | Capacity devolvida duas vezes no `DELETE` simultâneo |
+| 8 | Teste de concorrência com 20 requisições simultâneas via HTTP real | Oversell só apareceria em produção, nunca nos testes sequenciais |
