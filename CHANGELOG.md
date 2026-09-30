@@ -112,10 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test class or a single test method (exact name or wildcard, with the 15 classes and their
   120 tests), and a `curl` example for every endpoint with real responses, every error
   variation and a summary table of all 21 cases.
-- `docs/APRESENTACAO.md`: presentation script — 12-minute timeline, narration for each block,
-  the live demos with their real output (flow + idempotency, 20 requests vs 5 seats through
-  the load balancer, database proofs, the expiry trick), the likely code-review questions with
-  answers and proofs, the log walkthrough and a plan B for demo failures.
+- `docs/APRESENTACAO.md`: presentation script — timeline, stage-by-stage narration, the live
+  demos with their real output (flow + idempotency, 20 requests vs 5 seats through the load
+  balancer, database proofs, the expiry trick), the log walkthrough and a plan B for demo
+  failures.
 - OpenAPI contract generated from the code (springdoc-openapi) with Swagger UI: `/swagger-ui`
   and `/v3/api-docs` document the 5 routes with every status of each operation (including the
   `200` of the idempotent replay beside the `201`), the shared `ErrorResponse` envelope, the
@@ -125,16 +125,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like `/actuator` (126 tests in total).
 - Documentation updated for the interactive contract: `README` gained an "OpenAPI and Swagger
   UI" section (URLs, what is documented and the anti-drift test), `MANUAL` a Swagger walkthrough
-  with the commands to open the UI and fetch the spec, `APRESENTACAO` a live demo block and a
-  likely review question, `CODE_REVIEW` decision 9 (contract generated and tested vs handwritten
+  with the commands to open the UI and fetch the spec, `APRESENTACAO` a live demo block,
+  `CODE_REVIEW` decision 9 (contract generated and tested vs handwritten
   spec), and every test count moved from 120 to 126.
-- `docs/APRESENTACAO.md` restructured as a narrative guide: every stage now carries its
+- `docs/APRESENTACAO.md` expanded into a stage-by-stage guide: every stage now carries its
   commands, the real output and the explanation of what that stage proves — why the
   conditional `UPDATE` instead of `FOR UPDATE`, the transactional boundary of
   `ReservationWriter`, idempotency in two layers with the `UNIQUE` fallback, strict Jackson
   deserialization, the status update as the serialization point, and the two-worker expiry.
-  The rationale lives inside the stage that demonstrates it instead of in a separate list of
-  anticipated questions, and the timeline maps the 9 stages onto the 13 sections.
+  The rationale lives inside the stage that demonstrates it, and the timeline maps the 9
+  stages onto the 13 sections.
 
 ### Changed
 

@@ -369,8 +369,8 @@ xdg-open build/reports/tests/test/index.html
 | Integração (Postgres real + Flyway) | `*RepositoryTest`, `*ApiIntegrationTest`, `OpenApiContractIntegrationTest`, `RequestLoggingIntegrationTest` | 55 |
 | Concorrência (HTTP real, porta aleatória) | `ReservationConcurrencyIntegrationTest` | 2 |
 
-Os 126 testes rodam em cerca de 16 segundos, então dá para executar ao vivo. O ponto que
-costuma ser questionado é a escolha do banco: os testes de integração usam o Postgres do
+Os 126 testes rodam em cerca de 16 segundos, então dá para executar ao vivo. O ponto central
+é a escolha do banco: os testes de integração usam o Postgres do
 Docker (banco `flash_booking_test`, migrations pelo Flyway) porque uma constraint como
 `reserved <= capacity` não significa nada se quem a impõe é um banco de simulação. Dentro
 desse grupo estão também o teste do contrato OpenAPI e o teste do log de acesso.
