@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creation, reservations with idempotency, sell-out, cancellation and the whole error
   contract (400/404/405/409/415/422). It exits non-zero when any expectation fails and uses
   idempotency keys unique per run, so it can be repeated back to back.
+- `docs/SMOKE_TEST.md` with the evidence: the 26/26 result table, the nginx log proving both
+  replicas serve traffic, the expiry worker proven directly in the database (no HTTP read)
+  and the five issues the smoke test caught. `docs/PROGRESSO.md` marks "multiple instances",
+  "eventual consistency" and section 7.5 as done.
 
 ### Changed
 

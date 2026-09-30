@@ -2,12 +2,13 @@
 
 > Status da implementação frente ao [`PLANEJAMENTO.md`](./PLANEJAMENTO.md).
 > Pontos que valem discussão na apresentação: [`CODE_REVIEW.md`](./CODE_REVIEW.md).
+> Evidência da execução real da pilha: [`SMOKE_TEST.md`](./SMOKE_TEST.md).
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** 5 de 5 endpoints + expiração + teste de concorrência · 115 testes verdes · build OK
+**Estado:** 5 de 5 endpoints + expiração + concorrência + smoke test · 115 testes · pilha no ar com 2 réplicas
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** smoke test com `docker compose up --build` + `curl` (com as 2 réplicas) → `README.md`
+**Próxima etapa:** `README.md` e revisão final do `CHANGELOG.md`
 
 ---
 
@@ -27,11 +28,11 @@
 
 | # | Requisito | Status | Como está resolvido |
 |---|-----------|--------|---------------------|
-| 1 | Múltiplas instâncias | ⬜ Pendente | `docker-compose.yml` já sobe 2 réplicas da API; falta validar com teste |
+| 1 | Múltiplas instâncias | ✅ Concluído | `deploy: replicas: 2` atrás do LB nginx (`lb`); log com `$upstream_addr` mostra as 2 réplicas servindo requisições |
 | 2 | Nunca oversell | ✅ Concluído | `UPDATE condicional` (`WHERE reserved + qty <= capacity`) + `CHECK (reserved <= capacity)`, ambos provados no Postgres |
 | 3 | Expiração automática | ✅ Concluído | `expires_at` + TTL de 10 min; worker `@Scheduled` (5 s, configurável) **e** coleta *on-demand* na leitura de `GET`/`DELETE`, ambos pelo mesmo `UPDATE` condicional → devolve capacity 1× por reserva |
 | 4 | Idempotência | ✅ Concluído | `Idempotency-Key` obrigatório → `200` com a reserva anterior; `UNIQUE` no banco + re-leitura após rollback na corrida |
-| 5 | Consistência eventual (leitura) | ⬜ Não iniciado | `GET /events/:id` poderá servir de cache/réplica |
+| 5 | Consistência eventual (leitura) | ✅ Superado | Qualquer réplica lê do Postgres → leitura **forte** (acima do mínimo pedido); cache/CDN fica como evolução (seção 9) |
 | 6 | Tratamento explícito de erros | ✅ Concluído | Envelope + `ApiException` + `ApiExceptionHandler` |
 
 ---
@@ -89,6 +90,17 @@ src/main/kotlin/com/cielo/flashbooking/
 | `flash-booking.reservation.expiry-scan-ms` | `5000` | intervalo da varredura (`@Scheduled`) |
 | `flash-booking.reservation.expiry-initial-delay-ms` | `1000` | atraso inicial do worker (3600000 no perfil `test`, para não disparar durante os testes) |
 | `DB_URL` / `DB_USER` / `DB_PASSWORD` / `PORT` | `localhost:5432/flash_booking` / `flash` / `flash` / `8080` | infraestrutura |
+
+### Infraestrutura (Docker Compose)
+
+| Serviço | Build/imagem | Porta | Papel |
+|---------|--------------|-------|-------|
+| `postgres` | `postgres:16-alpine` | `5432` | banco `flash_booking` (+ criação de `flash_booking_test` no `init.sql`) |
+| `api` | `Dockerfile` (jar único em `build/libs`) | interna `8080` | **2 réplicas** (`deploy.replicas: 2`), stateless, cada uma roda o worker `@Scheduled` |
+| `lb` | `nginx:1.27-alpine` | `8080` | load balancer (round-robin pelo DNS do Docker) e log de `$upstream_addr` |
+
+Arquivos: `Dockerfile`, `docker/nginx/default.conf`, `docker/postgres/init.sql`,
+`docker/smoke.sh` (ver [`SMOKE_TEST.md`](./SMOKE_TEST.md)).
 
 ### Contrato de erro (seção 6 do planejamento)
 
@@ -163,6 +175,8 @@ próprio PostgreSQL a impor.
 | `d06677f` | feat | `DELETE /reservations/:id` com devolução atômica de capacity |
 | `7c5cc71` | feat | expiração: worker `@Scheduled` + coleta *on-demand* |
 | `e894978` | test | teste de concorrência real com 20 requisições simultâneas |
+| `b5bc7e9` | fix | 2 réplicas atrás do LB nginx + jar único para o `Dockerfile` |
+| `882d698` | test | `docker/smoke.sh` (26 verificações) |
 
 ---
 
@@ -218,8 +232,11 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
       `expires_at < now()` a cada 5 s (`ReservationExpiryService.sweep`) **e** coleta
       *on-demand* dentro de `GET /reservations/:id` e `DELETE /reservations/:id`; ambos
       idempotentes pelo mesmo `UPDATE` condicional
-- [ ] ⬜ **Múltiplas instâncias** — validar com as 2 réplicas já configuradas no compose
-- [ ] ⬜ **Consistência eventual** — leitura de disponibilidade servida de cache/réplica
+- [x] ✅ **Múltiplas instâncias** — `docker compose up --build` sobe `cielo-api-1` e
+      `cielo-api-2` atrás do LB nginx; o log `via 172.18.0.3:8080` / `via 172.18.0.4:8080`
+      mostra as duas servindo, e uma reserva criada numa réplica é lida na outra
+- [x] ✅ **Consistência eventual** — leitura servida direto do Postgres em qualquer réplica
+      (consistência forte, acima do mínimo exigido); cache/CDN é evolução futura (seção 9)
 
 ### 7.3 Testes (seção 8 do planejamento)
 
@@ -256,11 +273,15 @@ O repositório não tem README. Conteúdo mínimo exigido pela restrição 3 do 
 
 ### 7.5 Infra e qualidade
 
-- [ ] ⬜ **Smoke test da API** — a aplicação ainda não foi iniciada contra o Postgres
-      (só os testes); rodar `docker compose up --build` e bater nos endpoints com `curl`
-- [ ] ⬜ Healthcheck `/actuator/health` já exposto — confirmar que o compose sobe as 2 réplicas
-- [ ] ⬜ `Dockerfile` — o build copia `build/libs/*.jar`; garantir que o compose builda o jar
-      antes (hoje depende de `./gradlew build` na mão) — avaliar multi-stage build
+- [x] ✅ **Smoke test da API** — `./docker/smoke.sh` bate nos endpoints reais através do LB:
+      **26/26 PASS** (health, criação, idempotência, esgotamento, cancelamento e todo o
+      contrato de erros). Evidências em [`SMOKE_TEST.md`](./SMOKE_TEST.md), incluindo o worker
+      provado direto no banco
+- [x] ✅ Healthcheck `/actuator/health` — `docker compose ps` mostra `cielo-api-1` e
+      `cielo-api-2` **healthy** (`wget` no actuator); o `lb` só sobe depois das duas saudáveis
+- [x] ✅ `Dockerfile` — `tasks.jar { enabled = false }` deixa **um** jar em `build/libs`
+      (antes o `COPY *.jar` falhava com 2); o jar é pré-requisito documentado no README
+      (multi-stage rejeitado: exigiria baixar Gradle e dependências dentro do build)
 - [ ] ⬜ Publicar o repositório com histórico limpo e revisar `CHANGELOG.md` antes da entrega
 
 ---
@@ -276,14 +297,24 @@ docker compose up -d postgres    # banco de teste (flash_booking_test) precisa e
 git status                       # deve estar limpo e sincronizado com origin/master
 ```
 
+**Pilha real (opcional, para demonstrar):**
+
+```bash
+./gradlew bootJar
+docker compose up --build -d     # postgres + api x2 + lb em http://localhost:8080
+./docker/smoke.sh                # 26 verificações → PASS=26 FAIL=0
+docker compose logs -f lb        # cada requisição e a réplica que atendeu
+docker compose down               # para tudo (o volume do Postgres permanece)
+```
+
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** os 5 endpoints (§7.1), a expiração (§7.2) e o teste de concorrência
-(§7.3) estão **concluídos**. Faltam, em ordem: (1) smoke test com
-`docker compose up --build` + `curl` nas 2 réplicas da API (§7.5) — também cobre "múltiplas
-instâncias" e "consistência eventual" (§7.2), (2) `README.md` (§7.4) e (3) revisão final do
-`CHANGELOG.md`.
+**Continuar por:** os 5 endpoints (§7.1), a expiração (§7.2), o teste de concorrência
+(§7.3) e o smoke test (§7.5) estão **concluídos**. Faltam: (1) `README.md` (§7.4 — o
+conteúdo mínimo está listado lá e os exemplos de `curl` já existem em
+[`SMOKE_TEST.md`](./SMOKE_TEST.md)), (2) revisão final do `CHANGELOG.md` e (3) o item
+"publicar com histórico limpo" da §7.5.
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).
