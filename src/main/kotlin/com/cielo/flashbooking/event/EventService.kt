@@ -1,6 +1,7 @@
 package com.cielo.flashbooking.event
 
 import com.cielo.flashbooking.error.InvalidQuantityException
+import com.cielo.flashbooking.error.NotFoundException
 import com.cielo.flashbooking.event.dto.CreateEventRequest
 import com.cielo.flashbooking.event.dto.EventResponse
 import org.springframework.stereotype.Service
@@ -15,6 +16,9 @@ class EventService(private val eventRepository: EventRepository) {
         val event = Event(name = request.name.trim(), capacity = request.capacity)
         return eventRepository.save(event).toResponse()
     }
+
+    fun get(id: Long): EventResponse =
+        eventRepository.findById(id).orElseThrow { NotFoundException("eventId", id) }.toResponse()
 }
 
 internal fun Event.toResponse() = EventResponse(

@@ -1,6 +1,7 @@
 package com.cielo.flashbooking.event
 
 import com.cielo.flashbooking.error.InvalidQuantityException
+import com.cielo.flashbooking.error.NotFoundException
 import com.cielo.flashbooking.event.dto.CreateEventRequest
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -8,6 +9,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.Optional
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -85,5 +87,32 @@ class EventServiceTest {
         assertFailsWith<InvalidQuantityException> {
             eventService.create(CreateEventRequest(name = "Rock Show", capacity = -1))
         }
+    }
+
+    @Test
+    fun `should return event with available seats when it exists`() {
+        whenever(eventRepository.findById(1L)).thenReturn(
+            Optional.of(Event(id = 1L, name = "Rock Show", capacity = 100, reserved = 30)),
+        )
+
+        val response = eventService.get(1L)
+
+        assertEquals(1L, response.id)
+        assertEquals("Rock Show", response.name)
+        assertEquals(100, response.capacity)
+        assertEquals(30, response.reserved)
+        assertEquals(70, response.available)
+        assertEquals(EventStatus.ACTIVE, response.status)
+    }
+
+    @Test
+    fun `should throw not found when event does not exist`() {
+        whenever(eventRepository.findById(999L)).thenReturn(Optional.empty())
+
+        val ex = assertFailsWith<NotFoundException> { eventService.get(999L) }
+
+        assertEquals("NOT_FOUND", ex.code)
+        assertEquals(404, ex.status.value())
+        assertEquals(mapOf("eventId" to 999L), ex.details)
     }
 }

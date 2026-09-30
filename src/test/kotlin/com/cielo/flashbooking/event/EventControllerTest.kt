@@ -1,6 +1,7 @@
 package com.cielo.flashbooking.event
 
 import com.cielo.flashbooking.error.InvalidQuantityException
+import com.cielo.flashbooking.error.NotFoundException
 import com.cielo.flashbooking.event.dto.EventResponse
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -10,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.time.Instant
 
@@ -115,6 +117,44 @@ class EventControllerTest {
         }.andExpect {
             status { isUnsupportedMediaType() }
             jsonPath("$.error.code") { value("UNSUPPORTED_MEDIA_TYPE") }
+        }
+    }
+
+    @Test
+    fun `should return 200 with event when it exists`() {
+        whenever(eventService.get(1L)).thenReturn(
+            EventResponse(1L, "Rock Show", 100, 30, 70, EventStatus.ACTIVE, createdAt),
+        )
+
+        mockMvc.get("/events/1").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(1) }
+            jsonPath("$.name") { value("Rock Show") }
+            jsonPath("$.capacity") { value(100) }
+            jsonPath("$.reserved") { value(30) }
+            jsonPath("$.available") { value(70) }
+            jsonPath("$.status") { value("ACTIVE") }
+            jsonPath("$.createdAt") { value("2026-09-29T20:00:00Z") }
+        }
+    }
+
+    @Test
+    fun `should return 404 NOT_FOUND when event does not exist`() {
+        whenever(eventService.get(999L)).thenThrow(NotFoundException("eventId", 999L))
+
+        mockMvc.get("/events/999").andExpect {
+            status { isNotFound() }
+            jsonPath("$.error.code") { value("NOT_FOUND") }
+            jsonPath("$.error.details.eventId") { value(999) }
+        }
+    }
+
+    @Test
+    fun `should return 400 VALIDATION_ERROR when event id is not a number`() {
+        mockMvc.get("/events/abc").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.code") { value("VALIDATION_ERROR") }
+            jsonPath("$.error.details.id") { exists() }
         }
     }
 }
