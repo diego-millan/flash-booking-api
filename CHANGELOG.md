@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field returns `400 VALIDATION_ERROR` instead of a silent default value.
 - Test coverage grew from 12 to 24 tests: error envelope for every response class, event
   status and the database-level `CHECK (reserved <= capacity)` guarantee.
+- `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
+  requirements, test matrix, decisions and next steps.
 
 ### Changed
 
