@@ -2,6 +2,7 @@ package com.cielo.flashbooking.reservation
 
 import com.cielo.flashbooking.error.CapacityExceededException
 import com.cielo.flashbooking.error.NotFoundException
+import com.cielo.flashbooking.error.ReservationExpiredException
 import com.cielo.flashbooking.event.EventRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -29,5 +30,21 @@ class ReservationWriter(
                 expiresAt = expiresAt,
             ),
         )
+    }
+
+    @Transactional
+    fun cancel(id: Long): Reservation {
+        val updatedRows = reservationRepository.markCancelled(id)
+        val reservation = reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }
+
+        if (updatedRows == 0) {
+            if (reservation.status == ReservationStatus.EXPIRED) {
+                throw ReservationExpiredException(id)
+            }
+            return reservation
+        }
+
+        eventRepository.releaseReserved(reservation.eventId, reservation.quantity)
+        return reservation
     }
 }

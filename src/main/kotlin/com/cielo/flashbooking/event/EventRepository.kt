@@ -15,4 +15,11 @@ interface EventRepository : JpaRepository<Event, Long> {
             "WHERE e.id = :eventId AND e.reserved + :quantity <= e.capacity",
     )
     fun addReserved(@Param("eventId") eventId: Long, @Param("quantity") quantity: Int): Int
+
+    @Modifying(clearAutomatically = true)
+    @Query(
+        "UPDATE Event e SET e.reserved = e.reserved - :quantity " +
+            "WHERE e.id = :eventId AND e.reserved >= :quantity",
+    )
+    fun releaseReserved(@Param("eventId") eventId: Long, @Param("quantity") quantity: Int): Int
 }

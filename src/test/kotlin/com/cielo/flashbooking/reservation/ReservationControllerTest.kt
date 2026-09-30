@@ -3,6 +3,7 @@ package com.cielo.flashbooking.reservation
 import com.cielo.flashbooking.error.CapacityExceededException
 import com.cielo.flashbooking.error.InvalidQuantityException
 import com.cielo.flashbooking.error.NotFoundException
+import com.cielo.flashbooking.error.ReservationExpiredException
 import com.cielo.flashbooking.reservation.dto.CreateReservationResult
 import com.cielo.flashbooking.reservation.dto.ReservationResponse
 import org.junit.jupiter.api.Test
@@ -14,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.time.Instant
@@ -30,8 +32,12 @@ class ReservationControllerTest {
     private val expiresAt = Instant.parse("2026-09-30T21:00:00Z")
     private val createdAt = Instant.parse("2026-09-30T20:50:00Z")
 
-    private fun response(id: Long = 5L, eventId: Long = 1L, quantity: Int = 2) =
-        ReservationResponse(id, eventId, quantity, ReservationStatus.PENDING, expiresAt, createdAt)
+    private fun response(
+        id: Long = 5L,
+        eventId: Long = 1L,
+        quantity: Int = 2,
+        status: ReservationStatus = ReservationStatus.PENDING,
+    ) = ReservationResponse(id, eventId, quantity, status, expiresAt, createdAt)
 
     @Test
     fun `should return 201 with reservation when request is valid`() {
@@ -183,6 +189,49 @@ class ReservationControllerTest {
     @Test
     fun `should return 400 VALIDATION_ERROR when reservation id is not a number`() {
         mockMvc.get("/reservations/abc").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error.code") { value("VALIDATION_ERROR") }
+        }
+    }
+
+    @Test
+    fun `should return 200 with cancelled reservation when delete is called`() {
+        whenever(reservationService.cancel(5L)).thenReturn(response(status = ReservationStatus.CANCELLED))
+
+        mockMvc.delete("/reservations/5").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(5) }
+            jsonPath("$.eventId") { value(1) }
+            jsonPath("$.quantity") { value(2) }
+            jsonPath("$.status") { value("CANCELLED") }
+        }
+    }
+
+    @Test
+    fun `should return 409 RESERVATION_EXPIRED when cancelling expired reservation`() {
+        whenever(reservationService.cancel(5L)).thenThrow(ReservationExpiredException(5L))
+
+        mockMvc.delete("/reservations/5").andExpect {
+            status { isConflict() }
+            jsonPath("$.error.code") { value("RESERVATION_EXPIRED") }
+            jsonPath("$.error.details.reservationId") { value(5) }
+        }
+    }
+
+    @Test
+    fun `should return 404 NOT_FOUND when cancelling unknown reservation`() {
+        whenever(reservationService.cancel(999L)).thenThrow(NotFoundException("reservationId", 999L))
+
+        mockMvc.delete("/reservations/999").andExpect {
+            status { isNotFound() }
+            jsonPath("$.error.code") { value("NOT_FOUND") }
+            jsonPath("$.error.details.reservationId") { value(999) }
+        }
+    }
+
+    @Test
+    fun `should return 400 VALIDATION_ERROR when reservation id is not a number for delete`() {
+        mockMvc.delete("/reservations/abc").andExpect {
             status { isBadRequest() }
             jsonPath("$.error.code") { value("VALIDATION_ERROR") }
         }

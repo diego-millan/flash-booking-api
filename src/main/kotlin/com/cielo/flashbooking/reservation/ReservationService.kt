@@ -4,6 +4,7 @@ import com.cielo.flashbooking.error.IdempotencyConflictException
 import com.cielo.flashbooking.error.InvalidQuantityException
 import com.cielo.flashbooking.error.NotFoundException
 import com.cielo.flashbooking.error.QuantityLimitExceededException
+import com.cielo.flashbooking.error.ReservationExpiredException
 import com.cielo.flashbooking.error.ValidationException
 import com.cielo.flashbooking.event.EventRepository
 import com.cielo.flashbooking.reservation.dto.CreateReservationRequest
@@ -62,6 +63,15 @@ class ReservationService(
 
     fun get(id: Long): ReservationResponse =
         reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }.toResponse()
+
+    fun cancel(id: Long): ReservationResponse {
+        val existing = reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }
+        return when (existing.status) {
+            ReservationStatus.CANCELLED -> existing.toResponse()
+            ReservationStatus.EXPIRED -> throw ReservationExpiredException(id)
+            else -> reservationWriter.cancel(id).toResponse()
+        }
+    }
 }
 
 internal fun Reservation.toResponse() = ReservationResponse(

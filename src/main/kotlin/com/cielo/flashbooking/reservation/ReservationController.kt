@@ -5,6 +5,7 @@ import com.cielo.flashbooking.reservation.dto.ReservationResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -28,4 +29,7 @@ class ReservationController(private val reservationService: ReservationService) 
 
     @GetMapping("/reservations/{id}")
     fun get(@PathVariable id: Long): ReservationResponse = reservationService.get(id)
+
+    @DeleteMapping("/reservations/{id}")
+    fun cancel(@PathVariable id: Long): ReservationResponse = reservationService.cancel(id)
 }

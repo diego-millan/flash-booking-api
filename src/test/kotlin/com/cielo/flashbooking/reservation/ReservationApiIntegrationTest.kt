@@ -11,6 +11,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.transaction.annotation.Transactional
@@ -191,6 +192,87 @@ class ReservationApiIntegrationTest {
             status { isNotFound() }
             jsonPath("$.error.code") { value("NOT_FOUND") }
             jsonPath("$.error.details.reservationId") { value(999999) }
+        }
+    }
+
+    private fun createReservation(eventId: Int, quantity: Int, key: String): Int {
+        val body = reserve(eventId, quantity, key).andExpect { status { isCreated() } }
+            .andReturn().response.getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(body, "$.id")
+    }
+
+    @Test
+    fun `should release capacity when reservation is cancelled`() {
+        val eventId = createEvent(capacity = 10)
+        val reservationId = createReservation(eventId, 4, "key-cancel")
+
+        mockMvc.delete("/reservations/$reservationId").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(reservationId) }
+            jsonPath("$.status") { value("CANCELLED") }
+            jsonPath("$.quantity") { value(4) }
+        }
+
+        mockMvc.get("/events/$eventId").andExpect {
+            status { isOk() }
+            jsonPath("$.reserved") { value(0) }
+            jsonPath("$.available") { value(10) }
+        }
+    }
+
+    @Test
+    fun `should release capacity only once when reservation is cancelled twice`() {
+        val eventId = createEvent(capacity = 10)
+        val reservationId = createReservation(eventId, 4, "key-cancel-twice")
+
+        mockMvc.delete("/reservations/$reservationId").andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("CANCELLED") }
+        }
+        mockMvc.delete("/reservations/$reservationId").andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("CANCELLED") }
+        }
+
+        mockMvc.get("/events/$eventId").andExpect {
+            status { isOk() }
+            jsonPath("$.reserved") { value(0) }
+            jsonPath("$.available") { value(10) }
+        }
+    }
+
+    @Test
+    fun `should return 404 NOT_FOUND when cancelling unknown reservation`() {
+        mockMvc.delete("/reservations/999999").andExpect {
+            status { isNotFound() }
+            jsonPath("$.error.code") { value("NOT_FOUND") }
+            jsonPath("$.error.details.reservationId") { value(999999) }
+        }
+    }
+
+    @Test
+    fun `should return 409 RESERVATION_EXPIRED and keep capacity when reservation expired`() {
+        val event = eventRepository.save(Event(name = "Expired Night", capacity = 10, reserved = 3))
+        val reservation = reservationRepository.saveAndFlush(
+            Reservation(
+                eventId = event.id!!,
+                quantity = 3,
+                status = ReservationStatus.EXPIRED,
+                idempotencyKey = "key-expired",
+                expiresAt = Instant.now().minusSeconds(60),
+            ),
+        )
+
+        mockMvc.delete("/reservations/${reservation.id}").andExpect {
+            status { isConflict() }
+            jsonPath("$.error.code") { value("RESERVATION_EXPIRED") }
+            jsonPath("$.error.details.reservationId") { value(reservation.id!!.toInt()) }
+        }
+
+        mockMvc.get("/events/${event.id}").andExpect {
+            status { isOk() }
+            jsonPath("$.reserved") { value(3) }
+            jsonPath("$.available") { value(7) }
         }
     }
 }

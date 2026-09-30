@@ -138,4 +138,59 @@ class ReservationRepositoryTest {
 
         assertFailsWith<DataIntegrityViolationException> { eventRepository.saveAndFlush(found) }
     }
+
+    @Test
+    fun `should cancel reservation when it is pending`() {
+        val event = newEvent()
+        val saved = reservationRepository.saveAndFlush(
+            Reservation(eventId = event.id!!, quantity = 2, idempotencyKey = "key-cancel", expiresAt = expiresAt),
+        )
+
+        val updatedRows = reservationRepository.markCancelled(saved.id!!)
+
+        assertEquals(1, updatedRows)
+        assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(saved.id!!).orElseThrow().status)
+    }
+
+    @Test
+    fun `should keep reservation unchanged when it is already expired`() {
+        val event = newEvent()
+        val saved = reservationRepository.saveAndFlush(
+            Reservation(
+                eventId = event.id!!,
+                quantity = 2,
+                status = ReservationStatus.EXPIRED,
+                idempotencyKey = "key-expired",
+                expiresAt = expiresAt,
+            ),
+        )
+
+        val updatedRows = reservationRepository.markCancelled(saved.id!!)
+
+        assertEquals(0, updatedRows)
+        assertEquals(ReservationStatus.EXPIRED, reservationRepository.findById(saved.id!!).orElseThrow().status)
+    }
+
+    @Test
+    fun `should release reserved when event has reservation`() {
+        val event = newEvent(capacity = 10)
+        eventRepository.addReserved(event.id!!, 4)
+
+        val updatedRows = eventRepository.releaseReserved(event.id!!, 4)
+
+        assertEquals(1, updatedRows)
+        val found = eventRepository.findById(event.id!!).orElseThrow()
+        assertEquals(0, found.reserved)
+        assertTrue(found.reserved <= found.capacity)
+    }
+
+    @Test
+    fun `should keep reserved unchanged when release would make it negative`() {
+        val event = newEvent(capacity = 10)
+
+        val updatedRows = eventRepository.releaseReserved(event.id!!, 4)
+
+        assertEquals(0, updatedRows)
+        assertEquals(0, eventRepository.findById(event.id!!).orElseThrow().reserved)
+    }
 }

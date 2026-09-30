@@ -5,6 +5,7 @@ import com.cielo.flashbooking.error.IdempotencyConflictException
 import com.cielo.flashbooking.error.InvalidQuantityException
 import com.cielo.flashbooking.error.NotFoundException
 import com.cielo.flashbooking.error.QuantityLimitExceededException
+import com.cielo.flashbooking.error.ReservationExpiredException
 import com.cielo.flashbooking.error.ValidationException
 import com.cielo.flashbooking.event.Event
 import com.cielo.flashbooking.event.EventRepository
@@ -43,10 +44,16 @@ class ReservationServiceTest {
             .thenReturn(Optional.of(Event(id = id, name = "Rock Show", capacity = capacity, reserved = reserved)))
     }
 
-    private fun writtenReservation(id: Long = 5L, eventId: Long = 1L, quantity: Int = 2) = Reservation(
+    private fun writtenReservation(
+        id: Long = 5L,
+        eventId: Long = 1L,
+        quantity: Int = 2,
+        status: ReservationStatus = ReservationStatus.PENDING,
+    ) = Reservation(
         id = id,
         eventId = eventId,
         quantity = quantity,
+        status = status,
         idempotencyKey = key,
         expiresAt = Instant.parse("2026-09-30T21:00:00Z"),
         createdAt = Instant.parse("2026-09-30T20:50:00Z"),
@@ -214,6 +221,53 @@ class ReservationServiceTest {
         whenever(reservationRepository.findById(999L)).thenReturn(Optional.empty())
 
         val ex = assertFailsWith<NotFoundException> { service.get(999L) }
+
+        assertEquals("NOT_FOUND", ex.code)
+        assertEquals(404, ex.status.value())
+        assertEquals(mapOf("reservationId" to 999L), ex.details)
+    }
+
+    @Test
+    fun `should cancel reservation when it is pending`() {
+        whenever(reservationRepository.findById(5L)).thenReturn(Optional.of(writtenReservation()))
+        whenever(reservationWriter.cancel(5L)).thenReturn(writtenReservation(status = ReservationStatus.CANCELLED))
+
+        val response = service.cancel(5L)
+
+        assertEquals(5L, response.id)
+        assertEquals(ReservationStatus.CANCELLED, response.status)
+        verify(reservationWriter).cancel(5L)
+    }
+
+    @Test
+    fun `should not release capacity again when reservation is already cancelled`() {
+        whenever(reservationRepository.findById(5L))
+            .thenReturn(Optional.of(writtenReservation(status = ReservationStatus.CANCELLED)))
+
+        val response = service.cancel(5L)
+
+        assertEquals(ReservationStatus.CANCELLED, response.status)
+        verify(reservationWriter, never()).cancel(any())
+    }
+
+    @Test
+    fun `should throw reservation expired when reservation already expired`() {
+        whenever(reservationRepository.findById(5L))
+            .thenReturn(Optional.of(writtenReservation(status = ReservationStatus.EXPIRED)))
+
+        val ex = assertFailsWith<ReservationExpiredException> { service.cancel(5L) }
+
+        assertEquals("RESERVATION_EXPIRED", ex.code)
+        assertEquals(409, ex.status.value())
+        assertEquals(mapOf("reservationId" to 5L), ex.details)
+        verify(reservationWriter, never()).cancel(any())
+    }
+
+    @Test
+    fun `should throw not found when cancelling reservation that does not exist`() {
+        whenever(reservationRepository.findById(999L)).thenReturn(Optional.empty())
+
+        val ex = assertFailsWith<NotFoundException> { service.cancel(999L) }
 
         assertEquals("NOT_FOUND", ex.code)
         assertEquals(404, ex.status.value())

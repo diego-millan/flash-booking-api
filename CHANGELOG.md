@@ -48,7 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 38 new tests (70 in total) covering the reservation flow, including an end-to-end test
   that sells out an event and asserts `reserved == capacity` (never greater).
 - `GET /reservations/:id` endpoint returning status, quantity, `expiresAt` and `createdAt`,
-  with `404 NOT_FOUND` (`details.reservationId`) for unknown reservations (77 tests in total).
+  with `404 NOT_FOUND` (`details.reservationId`) for unknown reservations.
+- `DELETE /reservations/:id` endpoint cancelling a reservation and returning the capacity
+  atomically. The `UPDATE ... WHERE status IN ('PENDING','CONFIRMED')` is the serialization
+  point: a concurrent or repeated delete updates zero rows and never releases capacity twice.
+  Cancelling an already cancelled reservation answers `200` without a second release, while
+  an expired one answers `409 RESERVATION_EXPIRED` (the worker already returned its capacity).
+  `EventRepository.releaseReserved` guards `reserved >= quantity` so capacity can never go
+  negative (97 tests in total).
 - `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
   requirements, test matrix, decisions and next steps.
 - Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending
