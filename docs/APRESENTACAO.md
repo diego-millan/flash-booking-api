@@ -19,7 +19,7 @@
 | 5 | **Demo B** — 20 requisições × 5 lugares | 2 min | seção 5 |
 | 6 | **Demo C** — contrato de erros + prova no banco | 2 min | seção 6 |
 | 7 | **Demo D** — expiração automática | 1 min | seção 7 |
-| 8 | Testes (120) | 1 min | seção 8 |
+| 8 | Testes (126) | 1 min | seção 8 |
 | 9 | Code review: perguntas prováveis | 3 min | seção 9 |
 | 10 | Evoluções e fechamento | 0,5 min | `PLANEJAMENTO` §9 |
 
@@ -230,6 +230,25 @@ docker compose exec postgres psql -U flash -d flash_booking \
 **Fala:** "o H2 foi removido porque ele *simula* essas garantias. Aqui elas existem de
 verdade no Postgres e foram provadas — inclusive tentando violá-las de propósito."
 
+### Contrato interativo — Swagger (30 s, opcional)
+
+```bash
+xdg-open http://localhost:8080/swagger-ui/index.html
+
+# o JSON do contrato, direto da aplicação
+curl -s localhost:8080/v3/api-docs \
+  | python3 -c "import json,sys; s=json.load(sys.stdin); print([f'{m.upper()} {p}' for p,o in s['paths'].items() for m in o])"
+```
+
+```
+['POST /events', 'POST /events/{eventId}/reservations', 'GET /reservations/{id}', 'DELETE /reservations/{id}', 'GET /events/{id}']
+```
+
+**Fala:** "o contrato não é um documento escrito à mão — o código gera, e
+`OpenApiContractIntegrationTest` lê esse JSON e exige rotas, status (inclusive o `200` do
+replay), a header `Idempotency-Key` obrigatória e o schema do envelope. Mudou o endpoint e
+não a doc, o teste falha: é a defesa contra o contrato desatualizado."
+
 ---
 
 ## 7. Demo D — expiração automática (1 min)
@@ -274,14 +293,14 @@ Depois mostre que um cancelamento de reserva já vencida responde
 
 ```bash
 docker compose up -d postgres
-./gradlew test          # 120 testes, 0 falhas (~16 s)
+./gradlew test          # 126 testes, 0 falhas (~16 s)
 xdg-open build/reports/tests/test/index.html
 ```
 
 | Tipo | Exemplos | Nº |
 |------|----------|----|
 | Unitário (Mockito/MockMvc) | `EventServiceTest`, `ReservationWriterTest`, `ReservationControllerTest` | 69 |
-| Integração (Postgres real + Flyway) | `*RepositoryTest`, `*ApiIntegrationTest` | 49 |
+| Integração (Postgres real + Flyway) | `*RepositoryTest`, `*ApiIntegrationTest`, `OpenApiContractIntegrationTest`, `RequestLoggingIntegrationTest` | 55 |
 | Concorrência (HTTP real, porta aleatória) | `ReservationConcurrencyIntegrationTest` | 2 |
 
 Destaque: o teste de concorrência dispara **20 requisições simultâneas** (portão de partida
@@ -310,10 +329,11 @@ Comando para rodar só um teste (nome exato, entre aspas):
 | 2 workers não liberam a mesma vaga? | mesmo `UPDATE ... WHERE status='PENDING'` | Demo D, teste "sweep runs twice" |
 | As constraints existem mesmo? | `pg_constraint` mostra `events_check` e o `UNIQUE` | Demo C |
 | Testes usam banco de verdade? | Sim — H2 removido, Flyway 3/3 `success=t` | Demo C |
+| Tem OpenAPI/Swagger? | Sim, gerado **do código** (springdoc) e **testado** — `OpenApiContractIntegrationTest` trava rotas, status, header obrigatória e envelope; mudou o endpoint sem mudar a doc, o teste falha | Demo C, `/v3/api-docs` |
 | Por que a API não loga nada útil? | loga: acesso com status+duração, criações com IDs e erros com `code`/`path` (4xx em `WARN`, 5xx em `ERROR`, healthcheck ignorado) | seção 10 |
 | E a consistência eventual da leitura? | leitura vai direto ao Postgres em qualquer réplica — é **forte**, acima do mínimo pedido; cache/CDN é evolução | `PROGRESSO` §2, NFR 5 |
 
-Resumo visual (útil para a última tela) — `CODE_REVIEW` §9: as 8 decisões e "se tivesse
+Resumo visual (útil para a última tela) — `CODE_REVIEW` §9: as 9 decisões e "se tivesse
 feito ao contrário".
 
 ---
@@ -335,8 +355,10 @@ INFO reservation expired reservationId=49 eventId=46 quantity=4 source=worker
 
 Regras adotadas: acesso no fim de **cada** requisição (método, caminho com IDs, status,
 duração); eventos de negócio com os IDs **depois** da transação confirmar; 4xx em `WARN`
-(não `ERROR`, para não mascarar incidentes reais); 5xx em `ERROR` com stack trace;
-`/actuator/health` ignorado (o healthcheck consulta a cada 5 s em cada réplica).
+(não `ERROR`, para não mascarar incidentes reais); 5xx em `ERROR` com stack trace.
+Do que o acesso **não** trata: `/actuator/health` e os endpoints de documentação
+(`/v3/api-docs`, `/swagger-ui`) — healthcheck a cada 5 s em cada réplica e spec/UI que não
+são tráfego de negócio.
 
 ---
 

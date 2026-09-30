@@ -145,13 +145,13 @@ obrigatório.
 BUILD SUCCESSFUL in 14s
 ```
 
-A contagem (**120 testes, 0 falhas**) está no relatório HTML:
+A contagem (**126 testes, 0 falhas**) está no relatório HTML:
 
 ```bash
 xdg-open build/reports/tests/test/index.html
 ```
 
-A aba de resumo mostra `120 tests, 0 failures`. Para forçar reexecução mesmo com tudo
+A aba de resumo mostra `126 tests, 0 failures`. Para forçar reexecução mesmo com tudo
 cacheado: `./gradlew test --rerun-tasks`.
 
 ### Uma classe inteira
@@ -188,7 +188,7 @@ find src/test/kotlin -name "*Test*.kt" | sort
 grep -rn 'fun `should' src/test/kotlin/com/cielo/flashbooking/reservation/ReservationServiceTest.kt | sed 's/.*fun /  /'
 ```
 
-### Índice das 15 classes (120 testes)
+### Índice das 16 classes (126 testes)
 
 Todos os FQN começam com o pacote da classe indicado na tabela.
 
@@ -207,9 +207,10 @@ Todos os FQN começam com o pacote da classe indicado na tabela.
 | `com.cielo.flashbooking.reservation.ReservationConcurrencyIntegrationTest` | concorrência (HTTP real) | 2 |
 | `com.cielo.flashbooking.event.EventRepositoryTest` | integração (Postgres) | 7 |
 | `com.cielo.flashbooking.reservation.ReservationRepositoryTest` | integração (Postgres) | 15 |
-| `com.cielo.flashbooking.http.RequestLoggingIntegrationTest` | integração (Postgres) | 5 |
+| `com.cielo.flashbooking.http.RequestLoggingIntegrationTest` | integração (Postgres) | 6 |
+| `com.cielo.flashbooking.http.OpenApiContractIntegrationTest` | integração (Postgres) | 5 |
 | `com.cielo.flashbooking.FlashBookingApplicationTests` | integração (Postgres) | 1 |
-| **Total** | | **120** |
+| **Total** | | **126** |
 
 Comando para cada uma (cole o FQN da tabela):
 
@@ -423,6 +424,38 @@ Envelope de erro (sempre o mesmo formato):
 
 ---
 
+### Documentação interativa — Swagger UI
+
+Os mesmos endpoints e a mesma tabela de erros existem em formato interativo, gerado a partir
+do código:
+
+```bash
+xdg-open http://localhost:8080/swagger-ui/index.html    # interface no navegador
+
+# ou só a especificação, em JSON
+curl -s http://localhost:8080/v3/api-docs | python3 -m json.tool | head -30
+```
+
+```bash
+# /swagger-ui.html redireciona (302) para a UI
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/swagger-ui.html   # 302
+```
+
+O que a UI mostra: as **5 rotas**, a header **`Idempotency-Key` marcada como obrigatória**,
+todos os status de cada operação (inclusive o `200` do replay ao lado do `201`) e o schema do
+envelope `ErrorResponse` (`code`, `message`, `details`).
+
+O contrato é **testado**, não só documentado — `OpenApiContractIntegrationTest` lê o JSON de
+`/v3/api-docs` e exige que rotas, status, header e schemas batam com o código:
+
+```bash
+./gradlew test --tests "com.cielo.flashbooking.http.OpenApiContractIntegrationTest"
+```
+
+> `/v3/api-docs`, `/swagger-ui/**` e `/actuator` ficam fora do log de acesso (seção 5).
+
+---
+
 ## 5. Ver os logs
 
 ```bash
@@ -453,11 +486,12 @@ Filtros úteis:
 ```bash
 docker compose logs api | grep "reservation created"
 docker compose logs api | grep "WARN"
-docker compose logs api | grep -c "path=/actuator"    # deve ser 0: o healthcheck não é logado
+docker compose logs api | grep -cE "path=/actuator|path=/v3|path=/swagger"   # deve ser 0
 ```
 
-> O healthcheck do Compose consulta `/actuator/health` a cada 5 s em cada réplica; essas
-> requisições são ignoradas de propósito para não poluir o log.
+> O healthcheck do Compose consulta `/actuator/health` a cada 5 s em cada réplica e o contrato
+> em `/v3/api-docs`/`/swagger-ui` é artefato estático; essas requisições são ignoradas de
+> propósito para não poluir o log.
 
 ---
 

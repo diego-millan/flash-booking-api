@@ -3,7 +3,7 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F?logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![tests](https://img.shields.io/badge/testes-120-brightgreen)
+![tests](https://img.shields.io/badge/testes-126-brightgreen)
 
 Núcleo de um sistema de **reserva de ingressos** para eventos com capacidade limitada, em
 modelo **flash sale** (janelas de venda com pico de concorrência): criar evento, consultar
@@ -12,7 +12,7 @@ disponibilidade, reservar ingressos com idempotência, consultar e cancelar rese
 A exigência central é **nunca vender mais ingressos que a capacidade** — com N instâncias da
 API rodando ao mesmo tempo, sem lock de linha e sem fila.
 
-- **5 endpoints** (seção [Endpoints](#endpoints)) · **120 testes** · **smoke test 26/26**
+- **5 endpoints** (seção [Endpoints](#endpoints)) · **126 testes** · **smoke test 26/26** · **OpenAPI/Swagger UI**
 - API **stateless** com 2 réplicas atrás de um load balancer nginx
 - Worker de expiração + coleta *on-demand*, ambos idempotentes
 
@@ -31,6 +31,7 @@ API rodando ao mesmo tempo, sem lock de linha e sem fila.
 - [Decisões arquiteturais e trade-offs](#decisões-arquiteturais-e-trade-offs)
 - [Configuração](#configuração)
 - [Logs](#logs)
+- [OpenAPI e Swagger UI](#openapi-e-swagger-ui)
 - [Estrutura do repositório](#estrutura-do-repositório)
 - [Evoluções futuras](#evoluções-futuras)
 - [Documentação](#documentação)
@@ -108,7 +109,7 @@ docker compose down -v            # para e apaga os dados
 
 ```bash
 docker compose up -d postgres     # os testes usam o banco flash_booking_test
-./gradlew test                    # 120 testes
+./gradlew test                    # 126 testes
 ```
 
 Relatório: `build/reports/tests/test/index.html`.
@@ -116,7 +117,7 @@ Relatório: `build/reports/tests/test/index.html`.
 | Tipo | Infra | Exemplos |
 |------|-------|----------|
 | Unitário (Mockito/MockMvc) | sem banco | `EventServiceTest`, `ReservationServiceTest`, `ReservationWriterTest`, `ReservationExpiryServiceTest`, `*ControllerTest` |
-| Integração (Postgres real) | `flash_booking_test` + Flyway | `*RepositoryTest`, `*ApiIntegrationTest`, `FlashBookingApplicationTests` |
+| Integração (Postgres real) | `flash_booking_test` + Flyway | `*RepositoryTest`, `*ApiIntegrationTest`, `OpenApiContractIntegrationTest`, `RequestLoggingIntegrationTest`, `FlashBookingApplicationTests` |
 | Concorrência (HTTP real) | porta aleatória do servidor embutido | `ReservationConcurrencyIntegrationTest` |
 
 O H2 foi removido: `CHECK (reserved <= capacity)` só é confiável se o **próprio PostgreSQL**
@@ -339,6 +340,31 @@ docker compose logs -f api                # ao vivo
 docker compose logs api | grep "reservationId=48"   # rastrear um objeto
 ```
 
+## OpenAPI e Swagger UI
+
+O contrato completo é gerado a partir do código (springdoc-openapi) e servido pela própria API:
+
+| URL | O que é |
+|-----|---------|
+| `http://localhost:8080/swagger-ui/index.html` | interface interativa das 5 rotas (`/swagger-ui.html` redireciona) |
+| `http://localhost:8080/v3/api-docs` | especificação OpenAPI em JSON |
+
+```bash
+curl -s http://localhost:8080/v3/api-docs | python3 -m json.tool | head -30
+```
+
+O que está documentado, por operação: os status de sucesso (**inclusive o `200` do replay
+idempotente** ao lado do `201`), cada código de erro com o envelope `ErrorResponse`
+(`code`/`message`/`details`), a header **`Idempotency-Key` obrigatória** (`required: true`) e
+os limites de `quantity` e `capacity`.
+
+O contrato é **testado**: `OpenApiContractIntegrationTest` lê a especificação gerada e exige
+que rotas, status, header e schemas batam com o código — se alguém mudar o endpoint sem
+atualizar a documentação, o teste falha (proteção contra *drift*).
+
+> `/v3/api-docs`, `/swagger-ui/**` e `/actuator` ficam **fora do log de acesso**: não são
+> tráfego de negócio.
+
 ## Estrutura do repositório
 
 ```
@@ -358,7 +384,7 @@ docker compose logs api | grep "reservationId=48"   # rastrear um objeto
 │   ├── reservation/             # Reservation, ReservationService, ReservationWriter,
 │   │                            # ReservationExpiryService (worker), controller
 │   ├── error/                   # ApiException + exceções de domínio + handler
-│   ├── http/                    # log de acesso por requisição (interceptor)
+│   ├── http/                    # log de acesso por requisição (interceptor) + contrato OpenAPI
 │   └── FlashBookingApplication.kt
 ├── src/main/resources/db/migration/   # Flyway V1–V3
 ├── docker-compose.yml           # postgres + api x2 + lb

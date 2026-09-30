@@ -7,7 +7,7 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** entrega completa — 5 endpoints + expiração + concorrência + smoke (26/26) + README + logs estruturados · 120 testes
+**Estado:** entrega completa — 5 endpoints + expiração + concorrência + smoke (26/26) + README + logs estruturados + OpenAPI/Swagger · 126 testes
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
 **Próxima etapa:** nenhuma pendente — entrega completa (5 endpoints, expiração, concorrência,
 smoke test 26/26, README e revisão final do histórico)
@@ -122,7 +122,7 @@ Arquivos: `Dockerfile`, `docker/nginx/default.conf`, `docker/postgres/init.sql`,
 
 ## 4. Testes
 
-**120 testes, todos verdes.**
+**126 testes, todos verdes.**
 
 | Classe | Tipo | Nº | Cobre |
 |--------|------|----|-------|
@@ -139,7 +139,8 @@ Arquivos: `Dockerfile`, `docker/nginx/default.conf`, `docker/postgres/init.sql`,
 | `ReservationConcurrencyIntegrationTest` | Integração (HTTP real, porta aleatória) | 2 | **20 requisições simultâneas** (portão de partida) contra 5 lugares: `reserved` nunca passa de `capacity`, e com `quantity=2` toda requisição que ainda cabe é aceita |
 | `EventRepositoryTest` | Integração (Postgres) | 7 | persistência, `status` e **constraints do banco** |
 | `ReservationRepositoryTest` | Integração (Postgres) | 15 | `UNIQUE`, `CHECK`, `UPDATE` do cancel e do expire, guarda de `releaseReserved` e `findExpiredIds` |
-| `RequestLoggingIntegrationTest` | Integração (Postgres) | 5 | linha de acesso (método/caminho/status/duração), `WARN` com `code`+`path` em erro, `/actuator` não logado e IDs nas criações/cancelamento |
+| `RequestLoggingIntegrationTest` | Integração (Postgres) | 6 | linha de acesso (método/caminho/status/duração), `WARN` com `code`+`path` em erro, `/actuator` e endpoints de documentação não logados, e IDs nas criações/cancelamento |
+| `OpenApiContractIntegrationTest` | Integração (Postgres) | 5 | rotas, status de cada operação, header `Idempotency-Key` obrigatória, schema do envelope `ErrorResponse` e a UI servida |
 | `FlashBookingApplicationTests` | Integração (Postgres) | 1 | contexto + schema validado |
 
 Como rodar:
@@ -182,7 +183,11 @@ próprio PostgreSQL a impor.
 | `882d698` | test | `docker/smoke.sh` (26 verificações) |
 | `27886ee` | docs | evidências do smoke test (`docs/SMOKE_TEST.md`) |
 | `fc24bfc` | docs | `README.md` com rotas, garantias e decisões |
-| _último_ | docs | revisão final do `CHANGELOG.md` e desta tabela |
+| `c4d5fa1` | docs | revisão final do `CHANGELOG.md` e desta tabela |
+| `c39aea3` | feat | logs estruturados: acesso, negócio com IDs e erros (`WARN`/`ERROR`) |
+| `c32bc30` | docs | `MANUAL.md` e `APRESENTACAO.md` |
+| `1dd7389` | feat | contrato OpenAPI + Swagger UI gerados do código, com teste anti-drift |
+| _último_ | docs | documentação do OpenAPI nos docs e nesta tabela |
 
 > `1f77c7d` e `ad30e41` antecedem a criação do `CHANGELOG.md` (no `9c95d72`) e por isso não
 > o alteram; a partir do `9c95d72`, **todos** os commits atualizam o `CHANGELOG.md`
@@ -209,6 +214,7 @@ próprio PostgreSQL a impor.
 | 18 | Worker e coleta *on-demand* compartilham o mesmo primitivo atômico (`ReservationWriter.expire`) | lógica de expiração separada em cada caminho | As duas estratégias do planejamento (§5) devolvem capacity pelo mesmo `UPDATE ... WHERE status = 'PENDING'` → N instâncias do worker não liberam em dobro |
 | 19 | Expira apenas `PENDING` (não `CONFIRMED`) | expirar tudo que estiver vencido | `CONFIRMED` representa reserva já garantida; só `PENDING` é liberada pelo TTL |
 | 20 | Log estruturado em 3 camadas: acesso (método, caminho, status, duração) no fim de toda requisição, eventos de negócio com os IDs **depois** da transação confirmar, e erros com `code`/`path` — 4xx em `WARN`, 5xx em `ERROR`, `/actuator` ignorado | log genérico por request no controller (sem IDs) ou nível `ERROR` para tudo | Uma linha por request não diz *qual* objeto mudou; `ERROR` em 4xx mascararia incidentes reais; e o healthcheck (5 s × 2 réplicas) inundaria o log |
+| 21 | Contrato OpenAPI gerado **do código** com springdoc + Swagger UI e **travado por teste** (`OpenApiContractIntegrationTest` lê `/v3/api-docs` e valida rotas, status, header `Idempotency-Key` obrigatória e schema do envelope); `/v3/api-docs` e `/swagger-ui` fora do log de acesso | `docs/openapi.yaml` escrito à mão, ou Swagger UI sem teste | A doc escrita à mão desatualiza no primeiro endpoint alterado; a UI sem teste só mostra o que a API *diz* que faz, não o que faz |
 
 ---
 
@@ -275,7 +281,7 @@ O `README.md` existe e cobre tudo que a restrição 3 do planejamento exige:
 - [x] ✅ Título, descrição do sistema e stack (Kotlin, Spring Boot 3.5, PostgreSQL 16, Docker Compose)
 - [x] ✅ Pré-requisitos (JDK 17, Docker + Compose)
 - [x] ✅ Como rodar: `./gradlew bootJar && docker compose up --build` (API em `:8080` via LB, Postgres em `:5432`)
-- [x] ✅ Como rodar os testes: `docker compose up -d postgres && ./gradlew test` (120)
+- [x] ✅ Como rodar os testes: `docker compose up -d postgres && ./gradlew test` (126)
 - [x] ✅ Tabela das 5 rotas com exemplos de `curl` (request + response reais do smoke test)
 - [x] ✅ Contrato de erros (envelope + tabela de códigos)
 - [x] ✅ Decisões arquiteturais e **trade-offs** (tabela resumida + ponteiro para §6 e `CODE_REVIEW.md`)
@@ -303,6 +309,10 @@ O `README.md` existe e cobre tudo que a restrição 3 do planejamento exige:
 - [x] ✅ Logs estruturados (fora do escopo original, pedido na entrega) — acesso com
       método/caminho/status/duração, eventos de negócio com IDs após o commit, erros com
       `code`/`path` (4xx `WARN`, 5xx `ERROR`), `/actuator` ignorado; decisão 20
+- [x] ✅ OpenAPI + Swagger UI (fora do escopo original, decidido na entrega) — contrato
+      gerado do código com springdoc, UI em `/swagger-ui.html`, header `Idempotency-Key`
+      documentada como obrigatória, teste de contrato anti-drift (`OpenApiContractIntegrationTest`)
+      e endpoints de documentação fora do log de acesso; decisão 21
 - [x] ✅ `docs/MANUAL.md` e `docs/APRESENTACAO.md` — execução manual sem auxílio de
       ferramentas (Docker, teste a teste, `curl` por endpoint) e roteiro da apresentação
 
@@ -315,7 +325,7 @@ Para voltar exatamente de onde paramos:
 ```bash
 cd ~/IdeaProjects/cielo
 docker compose up -d postgres    # banco de teste (flash_booking_test) precisa estar no ar
-./gradlew test                   # 120 testes — os de integração exigem o Postgres
+./gradlew test                   # 126 testes — os de integração exigem o Postgres
 git status                       # deve estar limpo e sincronizado com origin/master
 ```
 
@@ -334,8 +344,8 @@ push automático autenticado (credencial guardada fora do repositório, em `~/.g
 
 **Entrega:** **concluída.** Todos os itens das seções 7.1 a 7.5 estão `[x]` — 5 endpoints,
 expiração (worker + coleta *on-demand*), teste de concorrência, smoke test 26/26 com 2 réplicas,
-`README.md` (§7.4), revisão final do `CHANGELOG.md`/histórico, logs estruturados e os documentos
-de execução/apresentação.
+`README.md` (§7.4), revisão final do `CHANGELOG.md`/histórico, logs estruturados, contrato
+OpenAPI/Swagger UI e os documentos de execução/apresentação.
 
 Para a apresentação, o caminho curto é: `docker compose up --build -d` → `./docker/smoke.sh`
 → `docker compose logs -f lb` (mostra as 2 réplicas atendendo) e seguir

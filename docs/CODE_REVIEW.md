@@ -259,3 +259,4 @@ confere que `reserved` não fica negativo.
 | 6 | Testes no Postgres real | A garantia central sem nenhuma cobertura |
 | 7 | `UPDATE` de `status` como ponto de serialização do cancel | Capacity devolvida duas vezes no `DELETE` simultâneo |
 | 8 | Teste de concorrência com 20 requisições simultâneas via HTTP real | Oversell só apareceria em produção, nunca nos testes sequenciais |
+| 9 | Contrato OpenAPI gerado do código e **testado** (springdoc + `OpenApiContractIntegrationTest`) | Documentação desatualizada em relação aos endpoints — ou nenhuma |
