@@ -102,6 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replicas serve traffic, the expiry worker proven directly in the database (no HTTP read)
   and the five issues the smoke test caught. `docs/PROGRESSO.md` marks "multiple instances",
   "eventual consistency" and section 7.5 as done.
+- `README.md` (mandatory deliverable): system description, stack, architecture, prerequisites,
+  how to run the stack and the tests, the 5 routes with real `curl` request/response examples,
+  the error contract, the anti-oversell guarantee, a summarized ADR with trade-offs,
+  configuration, repository structure, future evolutions and links to every document.
 
 ### Changed
 

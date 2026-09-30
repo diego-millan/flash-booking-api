@@ -6,9 +6,9 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** 5 de 5 endpoints + expiração + concorrência + smoke test · 115 testes · pilha no ar com 2 réplicas
+**Estado:** entrega completa — 5 endpoints + expiração + concorrência + smoke test (26/26) + README · 115 testes
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** `README.md` e revisão final do `CHANGELOG.md`
+**Próxima etapa:** revisão final do `CHANGELOG.md` e do histórico (item restante da §7.5)
 
 ---
 
@@ -254,22 +254,21 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 - [x] ✅ Constraint `CHECK (reserved <= capacity)` provada no Postgres (feito)
 - [x] ✅ Endpoint `POST /reservations` esgota sem oversell no Postgres (feito)
 
-### 7.4 `README.md` (obrigatório na entrega — ainda não existe)
+### 7.4 `README.md` (obrigatório na entrega) ✅ Concluído
 
-O repositório não tem README. Conteúdo mínimo exigido pela restrição 3 do planejamento:
+O `README.md` existe e cobre tudo que a restrição 3 do planejamento exige:
 
-- [ ] Título, descrição do sistema e stack (Kotlin, Spring Boot 3.5, PostgreSQL 16, Docker Compose)
-- [ ] Pré-requisitos (JDK 17, Docker + Compose)
-- [ ] Como rodar: `docker compose up --build` (API em `:8080`, Postgres em `:5432`)
-- [ ] Como rodar os testes: `docker compose up -d postgres && ./gradlew test`
-- [ ] Tabela das 5 rotas com exemplos de `curl` (request + response)
-- [ ] Contrato de erros (envelope + tabela de códigos)
-- [ ] Decisões arquiteturais e **trade-offs** (seções 3, 6 e 10 do planejamento;
-      ADR resumido também em `docs/PROGRESSO.md` §6)
-- [ ] Garantia anti-oversell explicada (`UPDATE condicional` + `CHECK` + teste de concorrência)
-- [ ] Evoluções futuras (seção 9: réplica/CDN, sharding, outbox + Kafka, rate limiting)
-- [ ] Link para `docs/PLANEJAMENTO.md` e `docs/PROGRESSO.md`
-- [ ] Badges (build, licença) — opcional
+- [x] ✅ Título, descrição do sistema e stack (Kotlin, Spring Boot 3.5, PostgreSQL 16, Docker Compose)
+- [x] ✅ Pré-requisitos (JDK 17, Docker + Compose)
+- [x] ✅ Como rodar: `./gradlew bootJar && docker compose up --build` (API em `:8080` via LB, Postgres em `:5432`)
+- [x] ✅ Como rodar os testes: `docker compose up -d postgres && ./gradlew test` (115)
+- [x] ✅ Tabela das 5 rotas com exemplos de `curl` (request + response reais do smoke test)
+- [x] ✅ Contrato de erros (envelope + tabela de códigos)
+- [x] ✅ Decisões arquiteturais e **trade-offs** (tabela resumida + ponteiro para §6 e `CODE_REVIEW.md`)
+- [x] ✅ Garantia anti-oversell explicada (`UPDATE condicional` + `CHECK` + liberação única + teste de concorrência)
+- [x] ✅ Evoluções futuras (seção 9: réplica/CDN, sharding, outbox + Kafka, rate limiting)
+- [x] ✅ Link para `docs/PLANEJAMENTO.md`, `PROGRESSO`, `CODE_REVIEW`, `SMOKE_TEST` e `CHANGELOG`
+- [x] ✅ Badges (Kotlin, Spring Boot, PostgreSQL, nº de testes)
 
 ### 7.5 Infra e qualidade
 
