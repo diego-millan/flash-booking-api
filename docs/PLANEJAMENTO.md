@@ -189,6 +189,18 @@ cielo/
 
 ## 8. Plano de testes (obrigatórios)
 
+### Estratégia
+
+| Tipo | Classes | Infra |
+|------|---------|-------|
+| Unitário (Mockito / MockMvc) | `EventServiceTest`, `EventControllerTest`, `ApiExceptionHandlerTest` | Sem banco, roda em qualquer ambiente |
+| Integração (banco real) | `EventRepositoryTest`, `FlashBookingApplicationTests` | PostgreSQL 16 via Docker Compose (`docker compose up -d postgres`) |
+
+Os testes de integração usam o banco `flash_booking_test` (criado por
+`docker/postgres/init.sql`) com o **Flyway executando as migrations de verdade** e
+`ddl-auto: validate` — assim a constraint `CHECK (reserved <= capacity)` é provada no
+Postgres, não na aplicação. O H2 foi removido justamente para não simular essas garantias.
+
 - [ ] Integração de **cada endpoint** dos requisitos funcionais
 - [ ] **Teste de concorrência:** N requisições simultâneas para capacidade menor que N →
       assert de que `reserved <= capacity` **sempre** (nunca oversell)

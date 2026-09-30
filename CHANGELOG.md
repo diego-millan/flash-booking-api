@@ -26,20 +26,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ApiException` base class so domain errors map to HTTP status codes in one place.
 - Strict Jackson deserialization (`fail-on-missing-creator-properties`): a missing required
   field returns `400 VALIDATION_ERROR` instead of a silent default value.
+- Test coverage grew from 12 to 24 tests: error envelope for every response class, event
+  status and the database-level `CHECK (reserved <= capacity)` guarantee.
 
 ### Changed
 
 - `capacity <= 0` now returns `422 INVALID_QUANTITY` (as planned in `docs/PLANEJAMENTO.md`
   section 6) instead of `400 VALIDATION_ERROR`.
+- Tests now run against **real PostgreSQL 16** (Docker Compose) instead of in-memory H2:
+  `EventRepositoryTest` and `FlashBookingApplicationTests` use the `flash_booking_test`
+  database, execute the Flyway migrations and validate the schema with `ddl-auto: validate`.
+- `docker/postgres/init.sql` creates the `flash_booking_test` database on first boot.
 
 ### Fixed
 
 - Unknown paths, unsupported methods and unsupported content types returned `500
   INTERNAL_ERROR` because of a catch-all exception handler; they now return `404 NOT_FOUND`,
   `405 METHOD_NOT_ALLOWED` and `415 UNSUPPORTED_MEDIA_TYPE` with the error envelope.
-- Test suite grew from 12 to 22 tests covering the error envelope for every response class.
 
 ### Removed
 
-- Unused `src/test/resources/application-test.yml` (tests run on in-memory H2 for now;
-  migration to Testcontainers/Postgres planned once Docker is available).
+- H2 test dependency and the in-memory datasource used by tests: the `reserved <= capacity`
+  constraint can only be trusted when it is enforced by PostgreSQL itself.

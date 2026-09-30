@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/flash_booking_test
+    username: flash
+    password: flash

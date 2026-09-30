@@ -2,12 +2,18 @@ package com.cielo.flashbooking.event
 
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager
+import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.test.context.ActiveProfiles
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-@DataJpaTest(properties = ["spring.flyway.enabled=false", "spring.jpa.hibernate.ddl-auto=create-drop"])
+@DataJpaTest
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class EventRepositoryTest {
 
     @Autowired
@@ -64,5 +70,25 @@ class EventRepositoryTest {
         val found = eventRepository.findById(999999L)
 
         assertTrue(found.isEmpty)
+    }
+
+    @Test
+    fun `should reject insert when capacity is zero at database level`() {
+        assertFailsWith<DataIntegrityViolationException> {
+            eventRepository.saveAndFlush(Event(name = "Rock Show", capacity = 0))
+        }
+    }
+
+    @Test
+    fun `should reject update when reserved exceeds capacity at database level`() {
+        val saved = eventRepository.saveAndFlush(Event(name = "Rock Show", capacity = 10))
+        entityManager.clear()
+
+        val found = eventRepository.findById(saved.id!!).orElseThrow()
+        found.reserved = 11
+
+        assertFailsWith<DataIntegrityViolationException> {
+            eventRepository.saveAndFlush(found)
+        }
     }
 }

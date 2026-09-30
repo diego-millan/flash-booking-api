@@ -2,17 +2,10 @@ package com.cielo.flashbooking
 
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.ActiveProfiles
 
-@SpringBootTest(
-    properties = [
-        "spring.datasource.url=jdbc:h2:mem:context-test;DB_CLOSE_DELAY=-1",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
-        "spring.flyway.enabled=false",
-        "spring.jpa.hibernate.ddl-auto=create-drop",
-    ],
-)
+@SpringBootTest
+@ActiveProfiles("test")
 class FlashBookingApplicationTests {
 
     @Test
