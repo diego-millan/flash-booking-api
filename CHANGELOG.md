@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tasks, plus a session resumption section (§8).
 - `docs/PROGRESSO.md` updated after `GET /events/:id`: endpoint and test matrix tables
   (32 tests) and commit history.
+- `docs/PROGRESSO.md` updated after `POST /events/:id/reservations`: endpoint, non-functional
+  requirements, error contract and test matrix (70 tests), plus decisions 11-15.
 
 ### Changed
 

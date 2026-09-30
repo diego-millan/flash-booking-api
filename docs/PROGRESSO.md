@@ -4,9 +4,9 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** `POST /events` + `GET /events/:id` completos · 32 testes verdes · build OK
+**Estado:** `POST /events`, `GET /events/:id` e `POST /events/:id/reservations` completos · 70 testes verdes · build OK
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** `POST /events/:id/reservations`
+**Próxima etapa:** `GET /reservations/:id`
 
 ---
 
@@ -16,7 +16,7 @@
 |---|--------|------|--------|------------|
 | 1 | POST | `/events` | ✅ Concluído | Criação com validação, `422 INVALID_QUANTITY` e envelope de erros |
 | 2 | GET | `/events/:id` | ✅ Concluído | Disponibilidade (`available = capacity - reserved`), `404 NOT_FOUND`, teste end-to-end |
-| 3 | POST | `/events/:id/reservations` | ⬜ Não iniciado | `UPDATE condicional` anti-oversell + `Idempotency-Key` |
+| 3 | POST | `/events/:id/reservations` | ✅ Concluído | `UPDATE condicional` anti-oversell, `Idempotency-Key` obrigatório, `409 CAPACITY_EXCEEDED` |
 | 4 | GET | `/reservations/:id` | ⬜ Não iniciado | — |
 | 5 | DELETE | `/reservations/:id` | ⬜ Não iniciado | Devolve capacity de forma atômica |
 
@@ -27,9 +27,9 @@
 | # | Requisito | Status | Como está resolvido |
 |---|-----------|--------|---------------------|
 | 1 | Múltiplas instâncias | ⬜ Pendente | `docker-compose.yml` já sobe 2 réplicas da API; falta validar com teste |
-| 2 | Nunca oversell | 🟡 Parcial | `CHECK (reserved <= capacity)` provado no Postgres; falta o `UPDATE condicional` |
-| 3 | Expiração automática | ⬜ Não iniciado | Worker cron + coleta *on-demand* na leitura |
-| 4 | Idempotência | ⬜ Não iniciado | Header `Idempotency-Key` + `UNIQUE` no banco |
+| 2 | Nunca oversell | ✅ Concluído | `UPDATE condicional` (`WHERE reserved + qty <= capacity`) + `CHECK (reserved <= capacity)`, ambos provados no Postgres |
+| 3 | Expiração automática | 🟡 Parcial | `expires_at` + TTL de 10 min gravados na reserva; falta o worker e a coleta *on-demand* |
+| 4 | Idempotência | ✅ Concluído | `Idempotency-Key` obrigatório → `200` com a reserva anterior; `UNIQUE` no banco + re-leitura após rollback na corrida |
 | 5 | Consistência eventual (leitura) | ⬜ Não iniciado | `GET /events/:id` poderá servir de cache/réplica |
 | 6 | Tratamento explícito de erros | ✅ Concluído | Envelope + `ApiException` + `ApiExceptionHandler` |
 
@@ -42,18 +42,30 @@
 ```
 src/main/kotlin/com/cielo/flashbooking/
 ├── error/
-│   ├── ApiException.kt             # base: status HTTP + code + details
-│   ├── InvalidQuantityException.kt # 422 INVALID_QUANTITY
-│   ├── NotFoundException.kt        # 404 NOT_FOUND
-│   ├── ApiExceptionHandler.kt      # @RestControllerAdvice
-│   └── ErrorResponse.kt            # envelope {"error":{code,message,details}}
-└── event/
-    ├── Event.kt                    # entidade events
-    ├── EventStatus.kt              # ACTIVE | PAUSED
-    ├── EventRepository.kt
-    ├── EventService.kt             # regra de negócio (create, get)
-    ├── EventController.kt          # POST /events, GET /events/:id
-    └── dto/                        # CreateEventRequest, EventResponse
+│   ├── ApiException.kt               # base: status HTTP + code + details
+│   ├── ValidationException.kt        # 400 VALIDATION_ERROR de domínio
+│   ├── NotFoundException.kt          # 404 NOT_FOUND
+│   ├── CapacityExceededException.kt  # 409 CAPACITY_EXCEEDED
+│   ├── IdempotencyConflictException.kt# 409 IDEMPOTENCY_CONFLICT
+│   ├── InvalidQuantityException.kt   # 422 INVALID_QUANTITY (≤ 0)
+│   ├── QuantityLimitExceededException.kt # 422 INVALID_QUANTITY (acima do limite)
+│   ├── ApiExceptionHandler.kt        # @RestControllerAdvice
+│   └── ErrorResponse.kt              # envelope {"error":{code,message,details}}
+├── event/
+│   ├── Event.kt                      # entidade events
+│   ├── EventStatus.kt                # ACTIVE | PAUSED
+│   ├── EventRepository.kt            # + addReserved (UPDATE condicional)
+│   ├── EventService.kt               # create, get
+│   ├── EventController.kt            # POST /events, GET /events/:id
+│   └── dto/                          # CreateEventRequest, EventResponse
+└── reservation/
+    ├── Reservation.kt                # entidade reservations
+    ├── ReservationStatus.kt          # PENDING | CONFIRMED | CANCELLED | EXPIRED
+    ├── ReservationRepository.kt      # + findByIdempotencyKey
+    ├── ReservationWriter.kt          # unidade transacional: capacity + insert atômicos
+    ├── ReservationService.kt         # validações, idempotência e replay
+    ├── ReservationController.kt      # POST /events/:eventId/reservations
+    └── dto/                          # CreateReservationRequest, ReservationResponse, CreateReservationResult
 ```
 
 ### Migrations (Flyway)
@@ -62,33 +74,40 @@ src/main/kotlin/com/cielo/flashbooking/
 |---------|----------|
 | `V1__create_events.sql` | `events(id, name, capacity, reserved, created_at)` + `CHECK (capacity > 0)` + `CHECK (reserved <= capacity)` |
 | `V2__add_status_to_events.sql` | `status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'` + `CHECK (status IN ('ACTIVE','PAUSED'))` |
+| `V3__create_reservations.sql` | `reservations(id, event_id, quantity, status, idempotency_key, expires_at, created_at)` + `CHECK (quantity > 0)` + `UNIQUE (idempotency_key)` + `FK → events(id)` + índice em `event_id` + índice parcial em `(expires_at) WHERE status = 'PENDING'` |
 
 ### Contrato de erro (seção 6 do planejamento)
 
 | HTTP | `code` | Status |
 |------|--------|--------|
-| 400 | `VALIDATION_ERROR` | ✅ (bean validation, JSON malformado, campo obrigatório ausente, tipo inválido) |
-| 404 | `NOT_FOUND` | ✅ (rota desconhecida e evento inexistente; reserva inexistente vem com `DELETE`/`GET /reservations`) |
+| 400 | `VALIDATION_ERROR` | ✅ (bean validation, JSON malformado, campo obrigatório ausente, tipo inválido, header obrigatório ausente) |
+| 404 | `NOT_FOUND` | ✅ (rota desconhecida, evento/reserva inexistente) |
 | 405 | `METHOD_NOT_ALLOWED` | ✅ |
-| 409 | `CAPACITY_EXCEEDED` | ⬜ no `POST /reservations` |
+| 409 | `CAPACITY_EXCEEDED` | ✅ (`POST /reservations` sem disponibilidade) |
+| 409 | `IDEMPOTENCY_CONFLICT` | ✅ (chave já usada em outro evento) |
 | 409 | `RESERVATION_EXPIRED` | ⬜ no cancelamento |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | ✅ |
-| 422 | `INVALID_QUANTITY` | ✅ |
+| 422 | `INVALID_QUANTITY` | ✅ (≤ 0 e acima do limite por reserva) |
 | 500 | `INTERNAL_ERROR` | ✅ (fallback com log) |
 
 ---
 
 ## 4. Testes
 
-**32 testes, todos verdes.**
+**70 testes, todos verdes.**
 
 | Classe | Tipo | Nº | Cobre |
 |--------|------|----|-------|
 | `EventServiceTest` | Unitário (Mockito) | 8 | criação, trim, `capacity <= 0` → 422, timestamp, consulta e 404 |
 | `EventControllerTest` | Unitário (MockMvc) | 10 | 200, 201, 400, 404, 405, 415, 422, 500 |
 | `ApiExceptionHandlerTest` | Unitário (MockMvc) | 3 | 404, 405, 500 |
+| `ReservationServiceTest` | Unitário (Mockito) | 11 | validações, idempotência/replay, conflito de chave, 404, 409, re-leitura após erro de integridade |
+| `ReservationWriterTest` | Unitário (Mockito) | 4 | `UPDATE condicional` → 0 linhas vira `409`, insert só após capacity |
+| `ReservationControllerTest` | Unitário (MockMvc) | 8 | 200 (replay), 201, 400, 404, 409, 415/422, header ausente |
 | `EventApiIntegrationTest` | Integração (Postgres) | 3 | fluxo completo `POST` → `GET`, 404 e id não numérico |
+| `ReservationApiIntegrationTest` | Integração (Postgres) | 7 | reserva reduz disponibilidade, **esgota sem oversell**, replay idempotente, 404/400/422, tradução de `UNIQUE` |
 | `EventRepositoryTest` | Integração (Postgres) | 7 | persistência, `status` e **constraints do banco** |
+| `ReservationRepositoryTest` | Integração (Postgres) | 8 | persistência, `UNIQUE` da chave, `CHECK (quantity > 0)` e o `UPDATE condicional` no banco |
 | `FlashBookingApplicationTests` | Integração (Postgres) | 1 | contexto + schema validado |
 
 Como rodar:
@@ -118,6 +137,8 @@ próprio PostgreSQL a impor.
 | `f4e47ef` | docs | documento de progresso (`docs/PROGRESSO.md`) |
 | `213bb6a` | docs | checklist de pendências + notas de retomada de sessão |
 | `5523c07` | feat | `GET /events/:id` com `404 NOT_FOUND` e teste end-to-end |
+| `4eac27d` | docs | progresso após `GET /events/:id` |
+| `36ce0be` | feat | `POST /events/:id/reservations` com `UPDATE condicional` e idempotência |
 
 ---
 
@@ -130,6 +151,11 @@ próprio PostgreSQL a impor.
 | 8 | `ApiException` como base dos erros de domínio | `if/else` no handler | `CAPACITY_EXCEEDED` e `RESERVATION_EXPIRED` chegam no próximo endpoint |
 | 9 | Testes de integração no Postgres do Compose | H2 / Testcontainers | Constraint só é confiável no banco real; Compose já é restrição do exercício |
 | 10 | `status ACTIVE \| PAUSED` com `CHECK` no banco | só enum na aplicação | Invariante aplicada por constraint, coerente com a decisão 3 |
+| 11 | `Idempotency-Key` obrigatório (`400` se ausente) | opcional com UUID gerado no servidor | Exige idempotência explícita do client; a doc pedia "duas camadas" |
+| 12 | Limite de 10 ingressos por reserva (`flash-booking.reservation.max-quantity`) | sem limite | Cobre o "acima do limite" da tabela 422 e reduz revenda |
+| 13 | `UPDATE condicional` como `@Modifying` no `EventRepository` | `SELECT ... FOR UPDATE` na linha do evento | Mesma razão da decisão 3: sem lock de linha no pico |
+| 14 | Unidade transacional isolada em `ReservationWriter` | `@Transactional` no próprio service | Auto-invocação não passa pelo proxy → a transação não existiria; assim o rollback de `UNIQUE` desfaz a capacity |
+| 15 | Corrida idempotente resolvida por re-leitura após rollback | lock/serialização | `DataIntegrityViolationException` → rollback → a reserva vencedora já está visível → `200` |
 
 ---
 
@@ -139,9 +165,10 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 
 ### 7.1 Endpoints (obrigatórios — seção 1 do planejamento)
 
-- [ ] ⬜ **`POST /events/:id/reservations`** — o coração do exercício:
-      `UPDATE condicional` (`WHERE reserved + qty <= capacity`), header `Idempotency-Key`,
-      `409 CAPACITY_EXCEEDED`, `422 INVALID_QUANTITY`, `404 NOT_FOUND`
+- [x] ✅ **`POST /events/:id/reservations`** — feito: `UPDATE condicional`
+      (`WHERE reserved + qty <= capacity`) no `ReservationWriter`, header `Idempotency-Key`
+      obrigatório (`200` no replay), `409 CAPACITY_EXCEEDED`, `409 IDEMPOTENCY_CONFLICT`,
+      `422 INVALID_QUANTITY` (≤ 0 e acima de 10), `404 NOT_FOUND`
 - [x] ✅ **`GET /events/:id`** — feito: `200` com `capacity`, `reserved`, `available` e
       `status`; `404 NOT_FOUND` com `details.eventId`; id não numérico → `400`; coberto por
       teste end-to-end no Postgres
@@ -151,24 +178,26 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 
 ### 7.2 Requisitos não funcionais
 
-- [ ] ⬜ **Oversell** — `UPDATE condicional` no `ReservationService` (a constraint do banco
-      já existe e está provada; falta a camada atômica da aplicação)
-- [ ] ⬜ **Idempotência** — coluna `idempotency_key UNIQUE` em `reservations` + retorno
-      `200` com a reserva anterior em caso de repetição
-- [ ] ⬜ **Expiração** — worker de varredura (`expires_at < now()`) **e** coleta
-      *on-demand* na leitura, ambos idempotentes (sem devolver capacity duas vezes)
+- [x] ✅ **Oversell** — `UPDATE condicional` em `EventRepository.addReserved` + `CHECK`
+      no banco; teste de integração esgota um evento de capacidade 3 e prova
+      `reserved == capacity` (nunca maior)
+- [x] ✅ **Idempotência** — `idempotency_key UNIQUE`, replay `200` com a reserva anterior e
+      re-leitura após rollback quando dois requests simultâneos usam a mesma chave
+- [ ] 🟡 **Expiração** — coluna `expires_at` + TTL de 10 min já gravados; falta o worker de
+      varredura (`expires_at < now()`) **e** a coleta *on-demand* na leitura, ambos idempotentes
 - [ ] ⬜ **Múltiplas instâncias** — validar com as 2 réplicas já configuradas no compose
 - [ ] ⬜ **Consistência eventual** — leitura de disponibilidade servida de cache/réplica
 
 ### 7.3 Testes (seção 8 do planejamento)
 
-- [ ] ⬜ **Concorrência** — N requisições simultâneas para capacidade < N →
-      `reserved <= capacity` **sempre**
-- [ ] ⬜ Idempotência: mesma chave → mesma reserva, sem duplicar
+- [ ] ⬜ **Concorrência** — N requisições **simultâneas** para capacidade < N →
+      `reserved <= capacity` **sempre** (hoje a prova é sequencial)
+- [x] ✅ Idempotência: mesma chave → mesma reserva, sem duplicar (feito)
 - [ ] ⬜ Expiração devolve capacity exatamente uma vez
 - [ ] ⬜ Cancelamento devolve capacity
-- [ ] ⬜ Integração de cada endpoint + envelope de erro para todos os casos
-- [ ] ✅ Constraint `CHECK (reserved <= capacity)` provada no Postgres (feito)
+- [ ] 🟡 Integração de cada endpoint + envelope de erro (2 de 5 endpoints com teste e2e)
+- [x] ✅ Constraint `CHECK (reserved <= capacity)` provada no Postgres (feito)
+- [x] ✅ Endpoint `POST /reservations` esgota sem oversell no Postgres (feito)
 
 ### 7.4 `README.md` (obrigatório na entrega — ainda não existe)
 
@@ -205,15 +234,16 @@ Para voltar exatamente de onde paramos:
 ```bash
 cd ~/IdeaProjects/cielo
 docker compose up -d postgres    # banco de teste (flash_booking_test) precisa estar no ar
-./gradlew test                   # 24 testes — os de integração exigem o Postgres
+./gradlew test                   # 70 testes — os de integração exigem o Postgres
 git status                       # deve estar limpo e sincronizado com origin/master
 ```
 
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** §7.1 → `POST /events/:id/reservations` (o coração do exercício: `UPDATE
-condicional`, `Idempotency-Key` e `409 CAPACITY_EXCEEDED`), que desbloqueia §7.2 e §7.3.
+**Continuar por:** §7.1 → `GET /reservations/:id` (leitura simples) e depois
+`DELETE /reservations/:id` (cancelamento devolvendo capacity de forma atômica + `409
+RESERVATION_EXPIRED`); em seguida expiração (§7.2) e o teste de concorrência real (§7.3).
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).
