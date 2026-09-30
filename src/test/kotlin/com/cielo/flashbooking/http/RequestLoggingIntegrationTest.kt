@@ -82,6 +82,17 @@ class RequestLoggingIntegrationTest {
     }
 
     @Test
+    fun `should not log documentation endpoints when openapi is requested`() {
+        mockMvc.get("/v3/api-docs").andExpect { status { isOk() } }
+        mockMvc.get("/swagger-ui/index.html").andExpect { status { isOk() } }
+
+        assertTrue(
+            messages().none { it.contains("path=/v3") || it.contains("path=/swagger-ui") },
+            messages().joinToString("\n"),
+        )
+    }
+
+    @Test
     fun `should log created ids when event and reservation are created`() {
         val eventId = createEvent(capacity = 10)
         mockMvc.post("/events/$eventId/reservations") {

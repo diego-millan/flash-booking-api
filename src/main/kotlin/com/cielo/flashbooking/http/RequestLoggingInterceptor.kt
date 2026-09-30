@@ -22,8 +22,7 @@ class RequestLoggingInterceptor : HandlerInterceptor {
         handler: Any,
         ex: Exception?,
     ) {
-        // the compose healthcheck polls /actuator/health every 5s on each replica
-        if (request.requestURI.startsWith("/actuator")) return
+        if (isInfrastructure(request.requestURI)) return
         val startedAt = request.getAttribute(STARTED_AT) as? Long ?: return
         val durationMs = (System.nanoTime() - startedAt) / 1_000_000
         logger.info(
@@ -34,6 +33,11 @@ class RequestLoggingInterceptor : HandlerInterceptor {
             durationMs,
         )
     }
+
+    private fun isInfrastructure(uri: String): Boolean =
+        // healthcheck polls /actuator/health every 5s on each replica; the OpenAPI
+        // spec and UI are static artifacts, not business traffic
+        uri.startsWith("/actuator") || uri.startsWith("/v3/api-docs") || uri.startsWith("/swagger-ui")
 
     companion object {
         private const val STARTED_AT = "flashbooking.request.startedAt"
