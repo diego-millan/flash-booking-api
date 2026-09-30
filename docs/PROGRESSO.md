@@ -4,9 +4,9 @@
 > Atualizar este arquivo a cada etapa concluída.
 
 **Última atualização:** 30/09/2026
-**Estado:** `POST /events` completo · 24 testes verdes · build OK
+**Estado:** `POST /events` + `GET /events/:id` completos · 32 testes verdes · build OK
 **Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
-**Próxima etapa:** `GET /events/:id`
+**Próxima etapa:** `POST /events/:id/reservations`
 
 ---
 
@@ -15,7 +15,7 @@
 | # | Método | Rota | Status | Observação |
 |---|--------|------|--------|------------|
 | 1 | POST | `/events` | ✅ Concluído | Criação com validação, `422 INVALID_QUANTITY` e envelope de erros |
-| 2 | GET | `/events/:id` | ⬜ Não iniciado | Consulta de disponibilidade (consistência eventual) |
+| 2 | GET | `/events/:id` | ✅ Concluído | Disponibilidade (`available = capacity - reserved`), `404 NOT_FOUND`, teste end-to-end |
 | 3 | POST | `/events/:id/reservations` | ⬜ Não iniciado | `UPDATE condicional` anti-oversell + `Idempotency-Key` |
 | 4 | GET | `/reservations/:id` | ⬜ Não iniciado | — |
 | 5 | DELETE | `/reservations/:id` | ⬜ Não iniciado | Devolve capacity de forma atômica |
@@ -42,17 +42,18 @@
 ```
 src/main/kotlin/com/cielo/flashbooking/
 ├── error/
-│   ├── ApiException.kt            # base: status HTTP + code + details
-│   ├── InvalidQuantityException.kt# 422 INVALID_QUANTITY
-│   ├── ApiExceptionHandler.kt     # @RestControllerAdvice
-│   └── ErrorResponse.kt           # envelope {"error":{code,message,details}}
+│   ├── ApiException.kt             # base: status HTTP + code + details
+│   ├── InvalidQuantityException.kt # 422 INVALID_QUANTITY
+│   ├── NotFoundException.kt        # 404 NOT_FOUND
+│   ├── ApiExceptionHandler.kt      # @RestControllerAdvice
+│   └── ErrorResponse.kt            # envelope {"error":{code,message,details}}
 └── event/
-    ├── Event.kt                   # entidade events
-    ├── EventStatus.kt             # ACTIVE | PAUSED
+    ├── Event.kt                    # entidade events
+    ├── EventStatus.kt              # ACTIVE | PAUSED
     ├── EventRepository.kt
-    ├── EventService.kt            # regra de negócio (create)
-    ├── EventController.kt         # POST /events
-    └── dto/                       # CreateEventRequest, EventResponse
+    ├── EventService.kt             # regra de negócio (create, get)
+    ├── EventController.kt          # POST /events, GET /events/:id
+    └── dto/                        # CreateEventRequest, EventResponse
 ```
 
 ### Migrations (Flyway)
@@ -67,7 +68,7 @@ src/main/kotlin/com/cielo/flashbooking/
 | HTTP | `code` | Status |
 |------|--------|--------|
 | 400 | `VALIDATION_ERROR` | ✅ (bean validation, JSON malformado, campo obrigatório ausente, tipo inválido) |
-| 404 | `NOT_FOUND` | ✅ (rota desconhecida; evento/reserva inexistente vem no próximo endpoint) |
+| 404 | `NOT_FOUND` | ✅ (rota desconhecida e evento inexistente; reserva inexistente vem com `DELETE`/`GET /reservations`) |
 | 405 | `METHOD_NOT_ALLOWED` | ✅ |
 | 409 | `CAPACITY_EXCEEDED` | ⬜ no `POST /reservations` |
 | 409 | `RESERVATION_EXPIRED` | ⬜ no cancelamento |
@@ -79,13 +80,14 @@ src/main/kotlin/com/cielo/flashbooking/
 
 ## 4. Testes
 
-**24 testes, todos verdes.**
+**32 testes, todos verdes.**
 
 | Classe | Tipo | Nº | Cobre |
 |--------|------|----|-------|
-| `EventServiceTest` | Unitário (Mockito) | 6 | criação, trim, `capacity <= 0` → 422, timestamp |
-| `EventControllerTest` | Unitário (MockMvc) | 7 | 201, 400, 422, 415 |
+| `EventServiceTest` | Unitário (Mockito) | 8 | criação, trim, `capacity <= 0` → 422, timestamp, consulta e 404 |
+| `EventControllerTest` | Unitário (MockMvc) | 10 | 200, 201, 400, 404, 405, 415, 422, 500 |
 | `ApiExceptionHandlerTest` | Unitário (MockMvc) | 3 | 404, 405, 500 |
+| `EventApiIntegrationTest` | Integração (Postgres) | 3 | fluxo completo `POST` → `GET`, 404 e id não numérico |
 | `EventRepositoryTest` | Integração (Postgres) | 7 | persistência, `status` e **constraints do banco** |
 | `FlashBookingApplicationTests` | Integração (Postgres) | 1 | contexto + schema validado |
 
@@ -113,6 +115,9 @@ próprio PostgreSQL a impor.
 | `43fc753` | feat | `POST /events` com validação e envelope de erros |
 | `c067333` | fix | contrato do `POST /events` (status, códigos de erro, payload estrito) |
 | `9c3ed9c` | test | testes de integração em PostgreSQL real com Flyway |
+| `f4e47ef` | docs | documento de progresso (`docs/PROGRESSO.md`) |
+| `213bb6a` | docs | checklist de pendências + notas de retomada de sessão |
+| `5523c07` | feat | `GET /events/:id` com `404 NOT_FOUND` e teste end-to-end |
 
 ---
 
@@ -134,11 +139,12 @@ Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
 
 ### 7.1 Endpoints (obrigatórios — seção 1 do planejamento)
 
-- [ ] ⬜ **`GET /events/:id`** — retornar `capacity`, `reserved`, `available`, `status`;
-      `404 NOT_FOUND` para evento inexistente; leitura pode ser eventual (RNF 5)
 - [ ] ⬜ **`POST /events/:id/reservations`** — o coração do exercício:
       `UPDATE condicional` (`WHERE reserved + qty <= capacity`), header `Idempotency-Key`,
       `409 CAPACITY_EXCEEDED`, `422 INVALID_QUANTITY`, `404 NOT_FOUND`
+- [x] ✅ **`GET /events/:id`** — feito: `200` com `capacity`, `reserved`, `available` e
+      `status`; `404 NOT_FOUND` com `details.eventId`; id não numérico → `400`; coberto por
+      teste end-to-end no Postgres
 - [ ] ⬜ **`GET /reservations/:id`** — status, quantidade, `expires_at`
 - [ ] ⬜ **`DELETE /reservations/:id`** — cancelar devolvendo capacity de forma atômica;
       `409 RESERVATION_EXPIRED` para reserva já expirada
@@ -206,8 +212,8 @@ git status                       # deve estar limpo e sincronizado com origin/ma
 **Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
 push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
 
-**Continuar por:** §7.1 → `GET /events/:id` (mais simples, depende só do `EventRepository`),
-depois `POST /events/:id/reservations`, que desbloqueia §7.2 e §7.3.
+**Continuar por:** §7.1 → `POST /events/:id/reservations` (o coração do exercício: `UPDATE
+condicional`, `Idempotency-Key` e `409 CAPACITY_EXCEEDED`), que desbloqueia §7.2 e §7.3.
 
 Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
 `docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).

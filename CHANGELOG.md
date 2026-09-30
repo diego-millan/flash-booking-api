@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending
   non-functional requirements and tests, required `README.md` outline, infrastructure
   tasks, plus a session resumption section (§8).
+- `docs/PROGRESSO.md` updated after `GET /events/:id`: endpoint and test matrix tables
+  (32 tests) and commit history.
 
 ### Changed
 
