@@ -63,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   payload deserialization, exception-handler fallback, real-PostgreSQL tests and the three
   pitfalls found along the way (Kotlin covariant `Map`, timestamp precision, unique-violation
   translation).
+- `docs/PROGRESSO.md` updated after `GET /reservations/:id`: endpoint table (4 of 5 done),
+  test matrix (77 tests) and commit history.
 
 ### Changed
 
