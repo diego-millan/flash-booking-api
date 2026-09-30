@@ -29,15 +29,23 @@ class ReservationServiceTest {
     private val eventRepository = mock<EventRepository>()
     private val reservationRepository = mock<ReservationRepository>()
     private val reservationWriter = mock<ReservationWriter>()
+    private val reservationExpiryService = mock<ReservationExpiryService>()
     private val service = ReservationService(
         eventRepository = eventRepository,
         reservationRepository = reservationRepository,
         reservationWriter = reservationWriter,
+        reservationExpiryService = reservationExpiryService,
         maxQuantity = 10,
         ttlMinutes = 10,
     )
 
     private val key = "idem-key-1"
+
+    @org.junit.jupiter.api.BeforeEach
+    fun stubExpiryPassthrough() {
+        whenever(reservationExpiryService.collectIfExpired(any()))
+            .thenAnswer { invocation -> invocation.arguments[0] }
+    }
 
     private fun givenEvent(id: Long = 1L, capacity: Int = 100, reserved: Int = 0) {
         whenever(eventRepository.findById(id))

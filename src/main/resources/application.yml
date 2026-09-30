@@ -21,6 +21,8 @@ flash-booking:
   reservation:
     max-quantity: 10
     ttl-minutes: 10
+    expiry-scan-ms: 5000
+    expiry-initial-delay-ms: 1000
 
 management:
   endpoints:

@@ -56,6 +56,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an expired one answers `409 RESERVATION_EXPIRED` (the worker already returned its capacity).
   `EventRepository.releaseReserved` guards `reserved >= quantity` so capacity can never go
   negative (97 tests in total).
+- Automatic reservation expiry, both strategies from the plan and both idempotent:
+  a `@Scheduled` sweep in `ReservationExpiryService` (`flash-booking.reservation.expiry-scan-ms`,
+  default 5s) and on-demand collection inside `GET /reservations/:id` and
+  `DELETE /reservations/:id`. Both go through `ReservationWriter.expire`, where
+  `UPDATE ... SET status = 'EXPIRED' WHERE status = 'PENDING'` is the serialization point,
+  so N API replicas running the worker release each reservation exactly once. A past-due
+  reservation cancelled by the user is collected first and answered with
+  `409 RESERVATION_EXPIRED` (113 tests in total).
 - `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
   requirements, test matrix, decisions and next steps.
 - Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending

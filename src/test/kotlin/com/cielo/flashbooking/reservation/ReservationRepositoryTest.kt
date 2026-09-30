@@ -193,4 +193,60 @@ class ReservationRepositoryTest {
         assertEquals(0, updatedRows)
         assertEquals(0, eventRepository.findById(event.id!!).orElseThrow().reserved)
     }
+
+    @Test
+    fun `should expire reservation when it is pending`() {
+        val event = newEvent()
+        val saved = reservationRepository.saveAndFlush(
+            Reservation(eventId = event.id!!, quantity = 2, idempotencyKey = "key-expire", expiresAt = expiresAt),
+        )
+
+        val updatedRows = reservationRepository.markExpired(saved.id!!)
+
+        assertEquals(1, updatedRows)
+        assertEquals(ReservationStatus.EXPIRED, reservationRepository.findById(saved.id!!).orElseThrow().status)
+    }
+
+    @Test
+    fun `should keep reservation unchanged when it is already cancelled and expire is attempted`() {
+        val event = newEvent()
+        val saved = reservationRepository.saveAndFlush(
+            Reservation(
+                eventId = event.id!!,
+                quantity = 2,
+                status = ReservationStatus.CANCELLED,
+                idempotencyKey = "key-cancelled",
+                expiresAt = expiresAt,
+            ),
+        )
+
+        val updatedRows = reservationRepository.markExpired(saved.id!!)
+
+        assertEquals(0, updatedRows)
+        assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(saved.id!!).orElseThrow().status)
+    }
+
+    @Test
+    fun `should find only past due pending reservations when sweeping`() {
+        val event = newEvent()
+        val pastDue = reservationRepository.saveAndFlush(
+            Reservation(eventId = event.id!!, quantity = 1, idempotencyKey = "sweep-past-due", expiresAt = expiresAt.minus(1, ChronoUnit.HOURS)),
+        )
+        reservationRepository.saveAndFlush(
+            Reservation(eventId = event.id!!, quantity = 1, idempotencyKey = "sweep-future", expiresAt = expiresAt),
+        )
+        reservationRepository.saveAndFlush(
+            Reservation(
+                eventId = event.id!!,
+                quantity = 1,
+                status = ReservationStatus.CANCELLED,
+                idempotencyKey = "sweep-cancelled",
+                expiresAt = expiresAt.minus(1, ChronoUnit.HOURS),
+            ),
+        )
+
+        val ids = reservationRepository.findExpiredIds(ReservationStatus.PENDING, Instant.now())
+
+        assertEquals(listOf(pastDue.id), ids)
+    }
 }

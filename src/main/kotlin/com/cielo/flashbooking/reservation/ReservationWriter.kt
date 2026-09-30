@@ -47,4 +47,15 @@ class ReservationWriter(
         eventRepository.releaseReserved(reservation.eventId, reservation.quantity)
         return reservation
     }
+
+    @Transactional
+    fun expire(id: Long): Reservation {
+        val updatedRows = reservationRepository.markExpired(id)
+        val reservation = reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }
+
+        if (updatedRows == 1) {
+            eventRepository.releaseReserved(reservation.eventId, reservation.quantity)
+        }
+        return reservation
+    }
 }

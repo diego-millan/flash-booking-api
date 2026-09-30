@@ -21,6 +21,7 @@ class ReservationService(
     private val eventRepository: EventRepository,
     private val reservationRepository: ReservationRepository,
     private val reservationWriter: ReservationWriter,
+    private val reservationExpiryService: ReservationExpiryService,
     @Value("\${flash-booking.reservation.max-quantity}") private val maxQuantity: Int,
     @Value("\${flash-booking.reservation.ttl-minutes}") private val ttlMinutes: Long,
 ) {
@@ -62,16 +63,19 @@ class ReservationService(
     }
 
     fun get(id: Long): ReservationResponse =
-        reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }.toResponse()
+        reservationExpiryService.collectIfExpired(reservation(id)).toResponse()
 
     fun cancel(id: Long): ReservationResponse {
-        val existing = reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }
-        return when (existing.status) {
-            ReservationStatus.CANCELLED -> existing.toResponse()
+        val current = reservationExpiryService.collectIfExpired(reservation(id))
+        return when (current.status) {
+            ReservationStatus.CANCELLED -> current.toResponse()
             ReservationStatus.EXPIRED -> throw ReservationExpiredException(id)
             else -> reservationWriter.cancel(id).toResponse()
         }
     }
+
+    private fun reservation(id: Long) =
+        reservationRepository.findById(id).orElseThrow { NotFoundException("reservationId", id) }
 }
 
 internal fun Reservation.toResponse() = ReservationResponse(

@@ -142,4 +142,40 @@ class ReservationWriterTest {
         assertEquals(mapOf("reservationId" to 999L), ex.details)
         verify(eventRepository, never()).releaseReserved(any(), any())
     }
+
+    @Test
+    fun `should release capacity when expire update affects one row`() {
+        whenever(reservationRepository.markExpired(5L)).thenReturn(1)
+        whenever(reservationRepository.findById(5L))
+            .thenReturn(Optional.of(reservationWith(ReservationStatus.EXPIRED)))
+
+        val reservation = writer.expire(5L)
+
+        assertEquals(ReservationStatus.EXPIRED, reservation.status)
+        verify(eventRepository).releaseReserved(1L, 2)
+    }
+
+    @Test
+    fun `should not release capacity when reservation was already expired`() {
+        whenever(reservationRepository.markExpired(5L)).thenReturn(0)
+        whenever(reservationRepository.findById(5L))
+            .thenReturn(Optional.of(reservationWith(ReservationStatus.EXPIRED)))
+
+        val reservation = writer.expire(5L)
+
+        assertEquals(ReservationStatus.EXPIRED, reservation.status)
+        verify(eventRepository, never()).releaseReserved(any(), any())
+    }
+
+    @Test
+    fun `should not release capacity when reservation was cancelled instead of expired`() {
+        whenever(reservationRepository.markExpired(5L)).thenReturn(0)
+        whenever(reservationRepository.findById(5L))
+            .thenReturn(Optional.of(reservationWith(ReservationStatus.CANCELLED)))
+
+        val reservation = writer.expire(5L)
+
+        assertEquals(ReservationStatus.CANCELLED, reservation.status)
+        verify(eventRepository, never()).releaseReserved(any(), any())
+    }
 }

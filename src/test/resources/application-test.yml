@@ -3,3 +3,7 @@ spring:
     url: jdbc:postgresql://localhost:5432/flash_booking_test
     username: flash
     password: flash
+
+flash-booking:
+  reservation:
+    expiry-initial-delay-ms: 3600000
