@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status and the database-level `CHECK (reserved <= capacity)` guarantee.
 - `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
   requirements, test matrix, decisions and next steps.
+- Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending
+  non-functional requirements and tests, required `README.md` outline, infrastructure
+  tasks, plus a session resumption section (§8).
 
 ### Changed
 

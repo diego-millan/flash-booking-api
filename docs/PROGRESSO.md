@@ -3,8 +3,10 @@
 > Status da implementação frente ao [`PLANEJAMENTO.md`](./PLANEJAMENTO.md).
 > Atualizar este arquivo a cada etapa concluída.
 
-**Última atualização:** 29/09/2026
+**Última atualização:** 30/09/2026
 **Estado:** `POST /events` completo · 24 testes verdes · build OK
+**Repositório:** https://github.com/diego-millan/flash-booking-api (`origin/master`, público)
+**Próxima etapa:** `GET /events/:id`
 
 ---
 
@@ -126,12 +128,86 @@ próprio PostgreSQL a impor.
 
 ---
 
-## 7. Próximos passos
+## 7. Pendências
 
-1. **`GET /events/:id`** — consulta de disponibilidade + `404 NOT_FOUND`
-2. **`POST /events/:id/reservations`** — `UPDATE condicional`, `Idempotency-Key`,
-   `409 CAPACITY_EXCEEDED` (o coração do exercício)
-3. **`GET /reservations/:id`** e **`DELETE /reservations/:id`**
-4. Expiração de reservas (worker + *on-demand*)
-5. Teste de concorrência (seção 8 do planejamento)
-6. `README.md` com instruções, decisões e trade-offs
+Legenda: ⬜ não iniciado · 🟡 em andamento · ✅ concluído
+
+### 7.1 Endpoints (obrigatórios — seção 1 do planejamento)
+
+- [ ] ⬜ **`GET /events/:id`** — retornar `capacity`, `reserved`, `available`, `status`;
+      `404 NOT_FOUND` para evento inexistente; leitura pode ser eventual (RNF 5)
+- [ ] ⬜ **`POST /events/:id/reservations`** — o coração do exercício:
+      `UPDATE condicional` (`WHERE reserved + qty <= capacity`), header `Idempotency-Key`,
+      `409 CAPACITY_EXCEEDED`, `422 INVALID_QUANTITY`, `404 NOT_FOUND`
+- [ ] ⬜ **`GET /reservations/:id`** — status, quantidade, `expires_at`
+- [ ] ⬜ **`DELETE /reservations/:id`** — cancelar devolvendo capacity de forma atômica;
+      `409 RESERVATION_EXPIRED` para reserva já expirada
+
+### 7.2 Requisitos não funcionais
+
+- [ ] ⬜ **Oversell** — `UPDATE condicional` no `ReservationService` (a constraint do banco
+      já existe e está provada; falta a camada atômica da aplicação)
+- [ ] ⬜ **Idempotência** — coluna `idempotency_key UNIQUE` em `reservations` + retorno
+      `200` com a reserva anterior em caso de repetição
+- [ ] ⬜ **Expiração** — worker de varredura (`expires_at < now()`) **e** coleta
+      *on-demand* na leitura, ambos idempotentes (sem devolver capacity duas vezes)
+- [ ] ⬜ **Múltiplas instâncias** — validar com as 2 réplicas já configuradas no compose
+- [ ] ⬜ **Consistência eventual** — leitura de disponibilidade servida de cache/réplica
+
+### 7.3 Testes (seção 8 do planejamento)
+
+- [ ] ⬜ **Concorrência** — N requisições simultâneas para capacidade < N →
+      `reserved <= capacity` **sempre**
+- [ ] ⬜ Idempotência: mesma chave → mesma reserva, sem duplicar
+- [ ] ⬜ Expiração devolve capacity exatamente uma vez
+- [ ] ⬜ Cancelamento devolve capacity
+- [ ] ⬜ Integração de cada endpoint + envelope de erro para todos os casos
+- [ ] ✅ Constraint `CHECK (reserved <= capacity)` provada no Postgres (feito)
+
+### 7.4 `README.md` (obrigatório na entrega — ainda não existe)
+
+O repositório não tem README. Conteúdo mínimo exigido pela restrição 3 do planejamento:
+
+- [ ] Título, descrição do sistema e stack (Kotlin, Spring Boot 3.5, PostgreSQL 16, Docker Compose)
+- [ ] Pré-requisitos (JDK 17, Docker + Compose)
+- [ ] Como rodar: `docker compose up --build` (API em `:8080`, Postgres em `:5432`)
+- [ ] Como rodar os testes: `docker compose up -d postgres && ./gradlew test`
+- [ ] Tabela das 5 rotas com exemplos de `curl` (request + response)
+- [ ] Contrato de erros (envelope + tabela de códigos)
+- [ ] Decisões arquiteturais e **trade-offs** (seções 3, 6 e 10 do planejamento;
+      ADR resumido também em `docs/PROGRESSO.md` §6)
+- [ ] Garantia anti-oversell explicada (`UPDATE condicional` + `CHECK` + teste de concorrência)
+- [ ] Evoluções futuras (seção 9: réplica/CDN, sharding, outbox + Kafka, rate limiting)
+- [ ] Link para `docs/PLANEJAMENTO.md` e `docs/PROGRESSO.md`
+- [ ] Badges (build, licença) — opcional
+
+### 7.5 Infra e qualidade
+
+- [ ] ⬜ **Smoke test da API** — a aplicação ainda não foi iniciada contra o Postgres
+      (só os testes); rodar `docker compose up --build` e bater nos endpoints com `curl`
+- [ ] ⬜ Healthcheck `/actuator/health` já exposto — confirmar que o compose sobe as 2 réplicas
+- [ ] ⬜ `Dockerfile` — o build copia `build/libs/*.jar`; garantir que o compose builda o jar
+      antes (hoje depende de `./gradlew build` na mão) — avaliar multi-stage build
+- [ ] ⬜ Publicar o repositório com histórico limpo e revisar `CHANGELOG.md` antes da entrega
+
+---
+
+## 8. Retomada da sessão
+
+Para voltar exatamente de onde paramos:
+
+```bash
+cd ~/IdeaProjects/cielo
+docker compose up -d postgres    # banco de teste (flash_booking_test) precisa estar no ar
+./gradlew test                   # 24 testes — os de integração exigem o Postgres
+git status                       # deve estar limpo e sincronizado com origin/master
+```
+
+**Estado do repositório:** `master` sincronizado com `origin/master`, árvore limpa,
+push automático autenticado (credencial guardada fora do repositório, em `~/.git-credentials`).
+
+**Continuar por:** §7.1 → `GET /events/:id` (mais simples, depende só do `EventRepository`),
+depois `POST /events/:id/reservations`, que desbloqueia §7.2 e §7.3.
+
+Este documento (`docs/PROGRESSO.md`) é o ponto de partida da próxima sessão — junto com
+`docs/PLANEJAMENTO.md` (decisões) e o `CHANGELOG.md` (histórico).
