@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so N API replicas running the worker release each reservation exactly once. A past-due
   reservation cancelled by the user is collected first and answered with
   `409 RESERVATION_EXPIRED` (113 tests in total).
+- Real concurrency test hitting the embedded server on a random port
+  (`ReservationConcurrencyIntegrationTest`): 20 requests released together by a start gate
+  against an event with 5 seats must yield exactly 5 `201` and 15 `409 CAPACITY_EXCEEDED`,
+  `reserved == 5` and never more; with quantity 2 the same 20 requests must yield exactly 2
+  `201`, `reserved == 4` and `available == 1`, proving the conditional update admits every
+  request that still fits (115 tests in total).
 - `docs/PROGRESSO.md` tracking implementation progress: endpoints, non-functional
   requirements, test matrix, decisions and next steps.
 - Detailed pending-work checklist in `docs/PROGRESSO.md` (§7): open endpoints, pending
