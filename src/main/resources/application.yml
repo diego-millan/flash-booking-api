@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: flash-booking
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/flash_booking}
+    username: ${DB_USER:flash}
+    password: ${DB_PASSWORD:flash}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
