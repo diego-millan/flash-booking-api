@@ -49,3 +49,9 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+// the plain jar is not deployable; a single artifact in build/libs keeps
+// `COPY build/libs/*.jar app.jar` in the Dockerfile from failing
+tasks.jar {
+    enabled = false
+}

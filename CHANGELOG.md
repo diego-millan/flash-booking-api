@@ -109,6 +109,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unknown paths, unsupported methods and unsupported content types returned `500
   INTERNAL_ERROR` because of a catch-all exception handler; they now return `404 NOT_FOUND`,
   `405 METHOD_NOT_ALLOWED` and `415 UNSUPPORTED_MEDIA_TYPE` with the error envelope.
+- The 2 API replicas in `docker-compose.yml` both published host port `8080`, so scaling the
+  service could not work. Replicas now only `expose` 8080 and a new `lb` service (nginx)
+  publishes 8080 with round-robin over both instances and logs `$upstream_addr` — the
+  "N instances behind a load balancer" from the plan section 3.
+- The Dockerfile `COPY build/libs/*.jar app.jar` failed when Gradle produced both the boot
+  jar and the plain jar; `tasks.jar { enabled = false }` keeps a single artifact in
+  `build/libs`.
 
 ### Removed
 
